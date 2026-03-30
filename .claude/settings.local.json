@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(python -c \"import snap7; print\\(dir\\(snap7.client.Client\\(\\)\\)\\)\" 2>/dev/null | tr ',' '\\\\n' | head -40)",
+      "Bash(python -c \"import snap7; c = snap7.client.Client\\(\\); print\\([m for m in dir\\(c\\) if not m.startswith\\('_'\\)]\\)\" 2>/dev/null)",
+      "Bash(python -c \"from snap7.util import get_bool, set_bool, get_int, set_int; help\\(get_int\\)\" 2>/dev/null)",
+      "Bash(python -c \"import snap7.util; print\\([m for m in dir\\(snap7.util\\) if not m.startswith\\('_'\\)]\\)\" 2>/dev/null)"
+    ]
+  }
+}

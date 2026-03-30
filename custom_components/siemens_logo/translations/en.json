@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Siemens LOGO!",
+        "data": {
+          "host": "IP Address",
+          "rack": "Rack",
+          "slot": "Slot",
+          "model": "LOGO! Model",
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      },
+      "entities": {
+        "title": "Configure Entities",
+        "description": "Enter LOGO! block addresses separated by commas.\nExample: {example}",
+        "data": {
+          "entities": "Entities"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to LOGO! at the specified address",
+      "invalid_entity": "Invalid entity address. Use format like NI1, AI3, Q1"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Entities",
+        "data": {
+          "entities": "Entities (e.g. NI1,NI2,AI1,Q1)"
+        }
+      }
+    }
+  }
+}

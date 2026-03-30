@@ -1,0 +1,11 @@
+{
+  "domain": "siemens_logo",
+  "name": "Siemens LOGO!",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "",
+  "iot_class": "local_polling",
+  "requirements": ["python-snap7==1.4.1"],
+  "version": "1.0.0"
+}
