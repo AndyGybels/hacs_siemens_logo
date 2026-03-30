@@ -37,7 +37,9 @@ Supported block types:
 | `NAI` | Network analog input | Number | Yes |
 | `NAQ` | Network analog output | Sensor | No |
 
-5. For each entity, confirm or override the **VM address**, set a **friendly name**, optionally provide a **unique ID**, and for NI entities choose whether to make it a **push button**.
+5. For each entity, confirm or override the **VM address**, set a **friendly name**, optionally provide a **unique ID**, and for NI entities choose whether to make it a **push button** (see [Push Button Mode](Push-Button-Mode)).
+
+Default VM addresses are derived automatically from the model — see [VM Addresses](VM-Addresses) for the full mapping.
 
 ## Reconfiguring
 
@@ -45,6 +47,8 @@ Supported block types:
 - **Configure** (three-dot menu → Configure): edit the entity list, addresses, names, and push button settings without removing and re-adding the integration
 
 Existing entity names and addresses are pre-filled when you open the options flow.
+
+> For scripted deployments or bulk entity edits, you can also configure the integration by editing the storage file directly — see [Manual Configuration](Manual-Configuration).
 
 ## Backing up and restoring
 

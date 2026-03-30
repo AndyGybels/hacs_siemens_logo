@@ -36,4 +36,6 @@ All I/O is accessed through the VM (Variable Memory) area, exposed as DB1 via th
 
 **Analog:** byte offset only — e.g. `1032` for VW1032
 
-You can override the default address for any entity during setup or via the options flow.
+You can override the default address for any entity during setup or via the options flow (see [Setup & Options](Setup-and-Options)).
+
+When configuring manually via the storage file, use the formulas in [Manual Configuration](Manual-Configuration) to compute the correct offsets.
