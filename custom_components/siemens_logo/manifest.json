@@ -6,6 +6,6 @@
   "dependencies": [],
   "documentation": "",
   "iot_class": "local_polling",
-  "requirements": ["python-snap7==1.4.1"],
+  "requirements": ["python-snap7==3.0.0"],
   "version": "1.0.0"
 }
