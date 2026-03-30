@@ -20,7 +20,7 @@ VM_MAPS = {
         "I":   {"start": 1024, "count": 24, "type": "digital"},
         "Q":   {"start": 1064, "count": 20, "type": "digital"},
         "M":   {"start": 1104, "count": 64, "type": "digital"},
-        "NI":  {"start": 1246, "count": 64, "type": "digital"},
+        "NI":  {"start": 0,    "count": 64, "type": "digital"},
         "NQ":  {"start": 1254, "count": 64, "type": "digital"},
         "AI":  {"start": 1032, "count": 8,  "type": "analog"},
         "AQ":  {"start": 1072, "count": 8,  "type": "analog"},
@@ -34,10 +34,6 @@ WRITABLE_DIGITAL = {"NI"}
 WRITABLE_ANALOG = {"NAI"}
 
 # Platform mapping based on block name
-# NI -> switch (writable digital)
-# I, Q, M, NQ -> binary_sensor (read-only digital)
-# NAI -> number (writable analog)
-# AI, AQ, NAQ -> sensor (read-only analog)
 PLATFORM_MAP = {
     "I": "binary_sensor",
     "Q": "binary_sensor",
@@ -54,11 +50,9 @@ PLATFORMS = ["switch", "binary_sensor", "sensor", "number"]
 
 
 def resolve_address(model: str, block_name: str, block_number: int):
-    """Resolve a block reference (e.g. NI1) to a VM byte offset and bit offset.
+    """Resolve a block reference to (byte_offset, bit_offset).
 
-    Returns (byte_offset, bit_offset) for digital blocks.
-    Returns (byte_offset, None) for analog blocks.
-    Raises ValueError if block_name or block_number is invalid.
+    Returns (byte_offset, bit_offset) for digital, (byte_offset, None) for analog.
     """
     vm_map = VM_MAPS.get(model)
     if vm_map is None:
@@ -70,8 +64,7 @@ def resolve_address(model: str, block_name: str, block_number: int):
 
     if block_number < 1 or block_number > block["count"]:
         raise ValueError(
-            f"{block_name}{block_number} out of range "
-            f"(max {block_name}{block['count']})"
+            f"{block_name}{block_number} out of range (max {block_name}{block['count']})"
         )
 
     if block["type"] == "digital":
@@ -79,36 +72,48 @@ def resolve_address(model: str, block_name: str, block_number: int):
         bit_offset = (block_number - 1) % 8
         return byte_offset, bit_offset
     else:
-        byte_offset = block["start"] + (block_number - 1) * 2
-        return byte_offset, None
+        return block["start"] + (block_number - 1) * 2, None
 
 
-def get_vm_read_ranges(model: str):
-    """Get the VM byte ranges to read for a model.
+def format_address(byte_offset: int, bit_offset: int | None) -> str:
+    """Format a VM address as a string (e.g. '0.0' or '1032')."""
+    if bit_offset is not None:
+        return f"{byte_offset}.{bit_offset}"
+    return str(byte_offset)
 
-    Returns a list of (start, size) tuples. Split into chunks that fit
-    within the LOGO! PDU size limit (~240 bytes per read).
+
+def parse_address(addr_str: str, block_type: str) -> tuple[int, int | None]:
+    """Parse an address string into (byte_offset, bit_offset).
+
+    Digital: '0.0' → (0, 0). Analog: '1032' → (1032, None).
     """
-    vm_map = VM_MAPS.get(model)
-    if vm_map is None:
-        raise ValueError(f"Unknown LOGO! model: {model}")
+    addr_str = addr_str.strip()
+    if block_type == "digital":
+        parts = addr_str.split(".")
+        if len(parts) != 2:
+            raise ValueError(f"Digital address must be 'byte.bit', got: {addr_str!r}")
+        return int(parts[0]), int(parts[1])
+    else:
+        return int(addr_str), None
 
-    all_starts = []
-    all_ends = []
-    for block in vm_map.values():
-        start = block["start"]
-        if block["type"] == "digital":
-            end = start + (block["count"] + 7) // 8
-        else:
-            end = start + block["count"] * 2
-        all_starts.append(start)
-        all_ends.append(end)
 
-    vm_start = min(all_starts)
-    vm_end = max(all_ends)
-    total = vm_end - vm_start
+def get_vm_read_ranges(entities: list[dict]):
+    """Compute VM read ranges from a list of entity configs (each has byte_offset).
 
-    # Split into chunks of max 200 bytes to stay within PDU limits
+    Returns a list of (start, size) tuples chunked to fit within PDU limits.
+    """
+    if not entities:
+        return []
+
+    offsets = [e["byte_offset"] for e in entities]
+    vm_start = min(offsets)
+    # For digital blocks the range is 1 byte per entity offset; analog is 2.
+    # We just span the full range from min to max+2 to be safe.
+    vm_end = max(
+        e["byte_offset"] + (1 if e.get("bit_offset") is not None else 2)
+        for e in entities
+    )
+
     max_chunk = 200
     ranges = []
     offset = vm_start
@@ -129,12 +134,8 @@ def get_platform(block_name: str) -> str:
 
 
 def parse_entity_string(entity_str: str):
-    """Parse a block reference string like 'NI1' into (block_name, block_number).
-
-    Handles: I1, Q1, M1, NI1, NQ1, AI1, AQ1, NAI1, NAQ1
-    """
+    """Parse 'NI1' → ('NI', 1)."""
     entity_str = entity_str.strip().upper()
-    # Try two-letter prefix first, then three-letter
     for prefix_len in (3, 2, 1):
         prefix = entity_str[:prefix_len]
         suffix = entity_str[prefix_len:]

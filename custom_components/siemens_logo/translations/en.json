@@ -17,11 +17,16 @@
         "data": {
           "entities": "Entities"
         }
+      },
+      "addresses": {
+        "title": "VM Addresses",
+        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032)."
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to LOGO! at the specified address",
-      "invalid_entity": "Invalid entity address. Use format like NI1, AI3, Q1"
+      "invalid_entity": "Invalid entity address. Use format like NI1, AI3, Q1",
+      "invalid_address": "Invalid address format. Use byte.bit for digital (e.g. 0.0) or byte for analog."
     }
   },
   "options": {
@@ -31,6 +36,10 @@
         "data": {
           "entities": "Entities (e.g. NI1,NI2,AI1,Q1)"
         }
+      },
+      "addresses": {
+        "title": "VM Addresses",
+        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032)."
       }
     }
   }

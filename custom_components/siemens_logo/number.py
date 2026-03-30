@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_ENTITIES, CONF_MODEL, DOMAIN, resolve_address
+from .const import CONF_ENTITIES, DOMAIN
 from .coordinator import LogoDataUpdateCoordinator
 
 
@@ -20,26 +20,20 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: LogoDataUpdateCoordinator = data["coordinator"]
     connection = data["connection"]
-    model = entry.data[CONF_MODEL]
 
-    entities = []
-    for entity_cfg in entry.data.get(CONF_ENTITIES, []):
-        if entity_cfg["platform"] != "number":
-            continue
-        byte_offset, _ = resolve_address(
-            model, entity_cfg["block"], entity_cfg["number"]
+    entities = [
+        LogoNumber(
+            coordinator=coordinator,
+            connection=connection,
+            entry_id=entry.entry_id,
+            name=entity_cfg["name"],
+            block=entity_cfg["block"],
+            number=entity_cfg["number"],
+            byte_offset=entity_cfg["byte_offset"],
         )
-        entities.append(
-            LogoNumber(
-                coordinator=coordinator,
-                connection=connection,
-                entry_id=entry.entry_id,
-                name=entity_cfg["name"],
-                block=entity_cfg["block"],
-                number=entity_cfg["number"],
-                byte_offset=byte_offset,
-            )
-        )
+        for entity_cfg in entry.data.get(CONF_ENTITIES, [])
+        if entity_cfg["platform"] == "number"
+    ]
 
     async_add_entities(entities)
 

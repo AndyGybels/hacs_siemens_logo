@@ -19,7 +19,7 @@ class LogoDataUpdateCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         connection,
-        model: str,
+        entities: list[dict],
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
     ) -> None:
         """Initialize the coordinator."""
@@ -30,15 +30,12 @@ class LogoDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.connection = connection
-        self.model = model
-        self._read_ranges = get_vm_read_ranges(model)
-        # Store the overall VM start for offset calculations
+        self._read_ranges = get_vm_read_ranges(entities)
         self.vm_start = self._read_ranges[0][0] if self._read_ranges else 0
 
     async def _async_update_data(self) -> bytearray:
         """Fetch data from the PLC."""
         try:
-            # Read all VM ranges and combine into a single buffer
             vm_start = self._read_ranges[0][0]
             vm_end = max(start + size for start, size in self._read_ranges)
             full_buffer = bytearray(vm_end - vm_start)

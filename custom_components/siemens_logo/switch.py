@@ -1,6 +1,8 @@
 """Switch platform for Siemens LOGO! integration."""
 from __future__ import annotations
 
+import logging
+
 from snap7.util import get_bool
 
 from homeassistant.components.switch import SwitchEntity
@@ -9,8 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_ENTITIES, CONF_MODEL, DOMAIN, resolve_address
+from .const import CONF_ENTITIES, DOMAIN
 from .coordinator import LogoDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -20,27 +24,21 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: LogoDataUpdateCoordinator = data["coordinator"]
     connection = data["connection"]
-    model = entry.data[CONF_MODEL]
 
-    entities = []
-    for entity_cfg in entry.data.get(CONF_ENTITIES, []):
-        if entity_cfg["platform"] != "switch":
-            continue
-        byte_offset, bit_offset = resolve_address(
-            model, entity_cfg["block"], entity_cfg["number"]
+    entities = [
+        LogoSwitch(
+            coordinator=coordinator,
+            connection=connection,
+            entry_id=entry.entry_id,
+            name=entity_cfg["name"],
+            block=entity_cfg["block"],
+            number=entity_cfg["number"],
+            byte_offset=entity_cfg["byte_offset"],
+            bit_offset=entity_cfg["bit_offset"],
         )
-        entities.append(
-            LogoSwitch(
-                coordinator=coordinator,
-                connection=connection,
-                entry_id=entry.entry_id,
-                name=entity_cfg["name"],
-                block=entity_cfg["block"],
-                number=entity_cfg["number"],
-                byte_offset=byte_offset,
-                bit_offset=bit_offset,
-            )
-        )
+        for entity_cfg in entry.data.get(CONF_ENTITIES, [])
+        if entity_cfg["platform"] == "switch"
+    ]
 
     async_add_entities(entities)
 
@@ -74,6 +72,10 @@ class LogoSwitch(CoordinatorEntity, SwitchEntity):
         return get_bool(self.coordinator.data, local_offset, self._bit_offset)
 
     async def async_turn_on(self, **kwargs) -> None:
+        _LOGGER.debug(
+            "async_turn_on: %s byte_offset=%d bit_offset=%d",
+            self._attr_name, self._byte_offset, self._bit_offset,
+        )
         await self.hass.async_add_executor_job(
             self._connection.write_vm_bool,
             self._byte_offset,
@@ -83,6 +85,10 @@ class LogoSwitch(CoordinatorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
+        _LOGGER.debug(
+            "async_turn_off: %s byte_offset=%d bit_offset=%d",
+            self._attr_name, self._byte_offset, self._bit_offset,
+        )
         await self.hass.async_add_executor_job(
             self._connection.write_vm_bool,
             self._byte_offset,

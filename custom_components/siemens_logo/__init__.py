@@ -11,8 +11,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_ENTITIES,
     CONF_HOST,
-    CONF_MODEL,
     CONF_RACK,
     CONF_SCAN_INTERVAL,
     CONF_SLOT,
@@ -68,8 +68,21 @@ class LogoConnection:
         with self._lock:
             self._ensure_connected()
             data = bytearray(self._client.db_read(1, byte_offset, 1))
+            _LOGGER.debug(
+                "write_vm_bool: byte_offset=%d bit_offset=%d value=%s data_before=%s",
+                byte_offset, bit_offset, value, data.hex(),
+            )
             set_bool(data, 0, bit_offset, value)
             self._client.db_write(1, byte_offset, data)
+            _LOGGER.debug(
+                "write_vm_bool: wrote byte_offset=%d data_after=%s",
+                byte_offset, data.hex(),
+            )
+            readback = bytearray(self._client.db_read(1, byte_offset, 1))
+            _LOGGER.debug(
+                "write_vm_bool: readback byte_offset=%d data=%s (expected=%s, match=%s)",
+                byte_offset, readback.hex(), data.hex(), readback == data,
+            )
 
     def write_vm_int(self, byte_offset: int, value: int) -> None:
         """Write a 16-bit integer (2 bytes) to VM area."""
@@ -85,7 +98,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     rack = entry.data.get(CONF_RACK, DEFAULT_RACK)
     slot = entry.data.get(CONF_SLOT, DEFAULT_SLOT)
-    model = entry.data[CONF_MODEL]
     scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
     connection = LogoConnection(host, rack, slot)
@@ -97,7 +109,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     coordinator = LogoDataUpdateCoordinator(
-        hass, connection, model, scan_interval
+        hass, connection, entry.data.get(CONF_ENTITIES, []), scan_interval
     )
     await coordinator.async_config_entry_first_refresh()
 
