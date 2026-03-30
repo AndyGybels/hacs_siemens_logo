@@ -23,7 +23,19 @@
       },
       "addresses": {
         "title": "VM Addresses",
-        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one."
+        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one.",
+        "sections": {
+          "I":   {"name": "Inputs (I)"},
+          "Q":   {"name": "Outputs (Q)"},
+          "M":   {"name": "Markers (M)"},
+          "NI":  {"name": "Network Inputs (NI)"},
+          "NQ":  {"name": "Network Outputs (NQ)"},
+          "AI":  {"name": "Analog Inputs (AI)"},
+          "AQ":  {"name": "Analog Outputs (AQ)"},
+          "AM":  {"name": "Analog Markers (AM)"},
+          "NAI": {"name": "Network Analog Inputs (NAI)"},
+          "NAQ": {"name": "Network Analog Outputs (NAQ)"}
+        }
       },
       "reconfigure": {
         "title": "Reconfigure LOGO! connection",
@@ -72,7 +84,19 @@
       },
       "addresses": {
         "title": "VM Addresses",
-        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one."
+        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one.",
+        "sections": {
+          "I":   {"name": "Inputs (I)"},
+          "Q":   {"name": "Outputs (Q)"},
+          "M":   {"name": "Markers (M)"},
+          "NI":  {"name": "Network Inputs (NI)"},
+          "NQ":  {"name": "Network Outputs (NQ)"},
+          "AI":  {"name": "Analog Inputs (AI)"},
+          "AQ":  {"name": "Analog Outputs (AQ)"},
+          "AM":  {"name": "Analog Markers (AM)"},
+          "NAI": {"name": "Network Analog Inputs (NAI)"},
+          "NAQ": {"name": "Network Analog Outputs (NAQ)"}
+        }
       }
     }
   }

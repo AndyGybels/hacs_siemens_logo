@@ -7,14 +7,17 @@ import threading
 
 import snap7
 from snap7.util import get_bool, set_bool, get_int, set_int
+import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_ENTITIES,
     CONF_HOST,
+    CONF_MODEL,
     CONF_RACK,
     CONF_SCAN_INTERVAL,
     CONF_SLOT,
@@ -23,10 +26,27 @@ from .const import (
     DEFAULT_SLOT,
     DOMAIN,
     PLATFORMS,
+    parse_entity_string,
+    resolve_address,
 )
 from .coordinator import LogoDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+WRITE_BLOCK_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): str,
+        vol.Required("block"): str,
+        vol.Required("value"): vol.Any(bool, int, float),
+    }
+)
+
+READ_BLOCK_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): str,
+        vol.Required("block"): str,
+    }
+)
 
 
 @dataclass
@@ -104,6 +124,94 @@ class LogoConnection:
             data = bytearray(2)
             set_int(data, 0, value)
             self._client.db_write(1, byte_offset, data)
+
+
+def _get_runtime_data(hass: HomeAssistant, entry_id: str) -> LogoRuntimeData:
+    """Look up runtime data for a config entry, raising ServiceValidationError if not found."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or not isinstance(getattr(entry, "runtime_data", None), LogoRuntimeData):
+        raise ServiceValidationError(
+            f"LOGO! integration entry '{entry_id}' not found or not loaded"
+        )
+    return entry.runtime_data
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register domain-level service actions."""
+
+    async def handle_write_block(call: ServiceCall) -> None:
+        """Write a value to any LOGO! block address."""
+        runtime_data = _get_runtime_data(hass, call.data["config_entry_id"])
+        entry = hass.config_entries.async_get_entry(call.data["config_entry_id"])
+        model = entry.data[CONF_MODEL]
+
+        try:
+            block_name, block_number = parse_entity_string(call.data["block"])
+            byte_offset, bit_offset = resolve_address(model, block_name, block_number)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+        value = call.data["value"]
+        try:
+            if bit_offset is not None:
+                await hass.async_add_executor_job(
+                    runtime_data.connection.write_vm_bool,
+                    byte_offset,
+                    bit_offset,
+                    bool(value),
+                )
+            else:
+                await hass.async_add_executor_job(
+                    runtime_data.connection.write_vm_int,
+                    byte_offset,
+                    int(value),
+                )
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to write to LOGO!: {err}") from err
+
+        await runtime_data.coordinator.async_request_refresh()
+
+    async def handle_read_block(call: ServiceCall) -> dict:
+        """Read the current value of any LOGO! block address."""
+        runtime_data = _get_runtime_data(hass, call.data["config_entry_id"])
+        entry = hass.config_entries.async_get_entry(call.data["config_entry_id"])
+        model = entry.data[CONF_MODEL]
+
+        try:
+            block_name, block_number = parse_entity_string(call.data["block"])
+            byte_offset, bit_offset = resolve_address(model, block_name, block_number)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+        try:
+            if bit_offset is not None:
+                data = await hass.async_add_executor_job(
+                    runtime_data.connection.read_vm, byte_offset, 1
+                )
+                return {"value": bool(get_bool(data, 0, bit_offset))}
+            else:
+                data = await hass.async_add_executor_job(
+                    runtime_data.connection.read_vm, byte_offset, 2
+                )
+                return {"value": int(get_int(data, 0))}
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to read from LOGO!: {err}") from err
+
+    hass.services.async_register(
+        DOMAIN,
+        "write_block",
+        handle_write_block,
+        schema=WRITE_BLOCK_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "read_block",
+        handle_read_block,
+        schema=READ_BLOCK_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LogoConfigEntry) -> bool:

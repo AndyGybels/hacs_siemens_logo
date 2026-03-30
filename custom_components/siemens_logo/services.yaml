@@ -1,0 +1,54 @@
+write_block:
+  name: Write block
+  description: >
+    Write a value directly to any LOGO! block address.
+    Useful for blocks that are not configured as entities.
+  fields:
+    config_entry_id:
+      name: Integration entry
+      description: Which LOGO! device to target.
+      required: true
+      selector:
+        config_entry:
+          integration: siemens_logo
+    block:
+      name: Block
+      description: >
+        Block address to write to (e.g. NI1, NQ3, NAI2).
+        Only writable blocks are supported: NI (digital) and NAI (analog).
+      required: true
+      example: "NI1"
+      selector:
+        text:
+    value:
+      name: Value
+      description: >
+        Value to write. Use true/false for digital blocks (NI),
+        or an integer for analog blocks (NAI).
+      required: true
+      example: true
+      selector:
+        object:
+
+read_block:
+  name: Read block
+  description: >
+    Read the current live value of any LOGO! block address directly from the PLC.
+    Returns a response with the value — use "Store response" in automations to capture it.
+  fields:
+    config_entry_id:
+      name: Integration entry
+      description: Which LOGO! device to target.
+      required: true
+      selector:
+        config_entry:
+          integration: siemens_logo
+    block:
+      name: Block
+      description: >
+        Block address to read (e.g. I1, Q2, AI1, NI3, M4).
+        Any readable block is supported.
+      required: true
+      example: "AI1"
+      selector:
+        text:

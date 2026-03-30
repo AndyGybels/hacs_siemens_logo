@@ -1,4 +1,5 @@
 """Config flow for Siemens LOGO! integration."""
+
 from __future__ import annotations
 
 import logging
@@ -8,6 +9,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 
 from .const import (
     CONF_ENTITIES,
@@ -19,8 +21,8 @@ from .const import (
     DEFAULT_RACK,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SLOT,
-    MIN_SCAN_INTERVAL,
     DOMAIN,
+    MIN_SCAN_INTERVAL,
     VM_MAPS,
     WRITABLE_DIGITAL,
     format_address,
@@ -39,26 +41,55 @@ def _connection_schema(defaults: dict) -> vol.Schema:
             vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
             vol.Optional(CONF_RACK, default=defaults.get(CONF_RACK, DEFAULT_RACK)): int,
             vol.Optional(CONF_SLOT, default=defaults.get(CONF_SLOT, DEFAULT_SLOT)): int,
-            vol.Required(CONF_MODEL, default=defaults.get(CONF_MODEL, "0BA8")): vol.In(list(VM_MAPS.keys())),
-            vol.Optional(CONF_SCAN_INTERVAL, default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.All(int, vol.Range(min=MIN_SCAN_INTERVAL)),
+            vol.Required(CONF_MODEL, default=defaults.get(CONF_MODEL, "0BA8")): vol.In(
+                list(VM_MAPS.keys())
+            ),
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): vol.All(int, vol.Range(min=MIN_SCAN_INTERVAL)),
         }
     )
 
 
 def _build_addresses_schema(entities: list[dict]) -> vol.Schema:
-    """One address field per entity, pre-filled. NI entities also get a push button checkbox."""
-    fields = {}
+    """Build one collapsible section per entity so each block is visually separated."""
+    outer: dict = {}
     for e in entities:
         key = f"{e['block']}{e['number']}"
-        fields[vol.Required(key, default=format_address(e["byte_offset"], e.get("bit_offset")))] = str
-        fields[vol.Required(f"{key}_name", default=e.get("name", f"LOGO {key}"))] = str
-        fields[vol.Optional(f"{key}_unique_id", default=e.get("unique_id", ""))] = str
+        inner: dict = {
+            vol.Required(
+                key, default=format_address(e["byte_offset"], e.get("bit_offset"))
+            ): str,
+            vol.Required(
+                f"{key}_name", default=e.get("name", f"LOGO {key}")
+            ): str,
+            vol.Optional(
+                f"{key}_unique_id", default=e.get("unique_id", "")
+            ): str,
+        }
         if e["block"] in WRITABLE_DIGITAL:
-            fields[vol.Optional(f"{key}_push", default=e.get("platform") == "button")] = bool
-    return vol.Schema(fields)
+            inner[
+                vol.Optional(f"{key}_push", default=e.get("platform") == "button")
+            ] = bool
+        outer[vol.Required(key)] = section(vol.Schema(inner), {"collapsed": False})
+    return vol.Schema(outer)
 
 
-def _apply_address_overrides(model: str, entities: list[dict], user_input: dict) -> list[dict]:
+def _flatten_section_input(user_input: dict) -> dict:
+    """Flatten section-nested user_input into a single-level dict for _apply_address_overrides."""
+    flat: dict = {}
+    for value in user_input.values():
+        if isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[value] = value
+    return flat
+
+
+def _apply_address_overrides(
+    model: str, entities: list[dict], user_input: dict
+) -> list[dict]:
     """Apply user-supplied address strings, names, unique IDs and push button flags to entity configs."""
     vm_map = VM_MAPS.get(model, {})
     updated = []
@@ -70,14 +101,16 @@ def _apply_address_overrides(model: str, entities: list[dict], user_input: dict)
         platform = "button" if is_push else get_platform(e["block"])
         name = user_input.get(f"{key}_name") or f"LOGO {key}"
         unique_id = user_input.get(f"{key}_unique_id") or None
-        updated.append({
-            **e,
-            "byte_offset": byte_offset,
-            "bit_offset": bit_offset,
-            "platform": platform,
-            "name": name,
-            "unique_id": unique_id,
-        })
+        updated.append(
+            {
+                **e,
+                "byte_offset": byte_offset,
+                "bit_offset": bit_offset,
+                "platform": platform,
+                "name": name,
+                "unique_id": unique_id,
+            }
+        )
     return updated
 
 
@@ -92,32 +125,46 @@ async def _test_connection(hass, host: str, rack: int, slot: int) -> bool:
         return False
 
 
-def _parse_entities(model: str, raw: str, current_entities: list[dict]) -> tuple[list[dict], str | None]:
+def _parse_entities(
+    model: str, raw: str, current_entities: list[dict]
+) -> tuple[list[dict], str | None]:
     """Parse entity string. Returns (entities, error_key) where error_key is None on success."""
     entities = []
     for part in [p.strip() for p in raw.split(",") if p.strip()]:
         try:
             block_name, block_number = parse_entity_string(part)
             existing = next(
-                (e for e in current_entities
-                 if e["block"] == block_name and e["number"] == block_number),
+                (
+                    e
+                    for e in current_entities
+                    if e["block"] == block_name and e["number"] == block_number
+                ),
                 None,
             )
             if existing:
                 byte_offset = existing["byte_offset"]
                 bit_offset = existing.get("bit_offset")
                 platform = existing.get("platform", get_platform(block_name))
+                name = existing.get("name", f"LOGO {block_name}{block_number}")
+                unique_id = existing.get("unique_id")
             else:
-                byte_offset, bit_offset = resolve_address(model, block_name, block_number)
+                byte_offset, bit_offset = resolve_address(
+                    model, block_name, block_number
+                )
                 platform = get_platform(block_name)
-            entities.append({
-                "block": block_name,
-                "number": block_number,
-                "platform": platform,
-                "name": f"LOGO {block_name}{block_number}",
-                "byte_offset": byte_offset,
-                "bit_offset": bit_offset,
-            })
+                name = f"LOGO {block_name}{block_number}"
+                unique_id = None
+            entities.append(
+                {
+                    "block": block_name,
+                    "number": block_number,
+                    "platform": platform,
+                    "name": name,
+                    "unique_id": unique_id,
+                    "byte_offset": byte_offset,
+                    "bit_offset": bit_offset,
+                }
+            )
         except ValueError as err:
             _LOGGER.error("Invalid entity '%s': %s", part, err)
             return [], "invalid_entity"
@@ -186,7 +233,9 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 entities = _apply_address_overrides(
-                    self._connection_data[CONF_MODEL], self._entities, user_input
+                    self._connection_data[CONF_MODEL],
+                    self._entities,
+                    _flatten_section_input(user_input),
                 )
             except (ValueError, KeyError) as err:
                 errors["base"] = "invalid_address"
@@ -288,7 +337,9 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="entities",
-            data_schema=vol.Schema({vol.Required(CONF_ENTITIES, default=current_str): str}),
+            data_schema=vol.Schema(
+                {vol.Required(CONF_ENTITIES, default=current_str): str}
+            ),
             errors=errors,
             description_placeholders={"example": "NI1,NI2,NQ1,AI1,Q1,M1"},
         )
@@ -299,7 +350,9 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 entities = _apply_address_overrides(
-                    self._connection_data[CONF_MODEL], self._entities, user_input
+                    self._connection_data[CONF_MODEL],
+                    self._entities,
+                    _flatten_section_input(user_input),
                 )
             except (ValueError, KeyError) as err:
                 errors["base"] = "invalid_address"
@@ -307,7 +360,11 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
             else:
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={**self.config_entry.data, **self._connection_data, CONF_ENTITIES: entities},
+                    data={
+                        **self.config_entry.data,
+                        **self._connection_data,
+                        CONF_ENTITIES: entities,
+                    },
                 )
                 return self.async_create_entry(title="", data={})
 
