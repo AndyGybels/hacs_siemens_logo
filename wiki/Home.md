@@ -10,5 +10,6 @@ Welcome to the documentation for the Siemens LOGO! Home Assistant integration.
 - [VM Addresses](VM-Addresses) — default memory mappings per model
 - [Push Button Mode](Push-Button-Mode) — momentary pulse for NI entities
 - [Service Actions](Service-Actions) — `write_block` and `read_block`
+- [Manual Configuration](Manual-Configuration) — editing the storage file directly
 - [Troubleshooting](Troubleshooting) — common problems and fixes
 - [Development](Development) — running tests, project structure
