@@ -16,7 +16,20 @@ MIN_SCAN_INTERVAL = 100  # milliseconds
 
 # VM address maps per LOGO! model
 # Each block: start byte in VM, max count, type (digital=bit, analog=word)
+#
+# 0BA7: I/Q/M/AI/AQ/AM only — no network variables (NI/NQ/NAI/NAQ)
+# 0BA8: full set including network variables; NI/NQ/NAI/NAQ default addresses
+#       are set by LOGO! Soft Comfort parameter VM mapping (default starts at 0)
+# 0BA9: same VM layout as 0BA8 (LOGO! 8.3 hardware revision)
 VM_MAPS = {
+    "0BA7": {
+        "I":  {"start": 923, "count": 24, "type": "digital"},
+        "Q":  {"start": 942, "count": 16, "type": "digital"},
+        "M":  {"start": 948, "count": 27, "type": "digital"},
+        "AI": {"start": 926, "count": 8,  "type": "analog"},
+        "AQ": {"start": 944, "count": 2,  "type": "analog"},
+        "AM": {"start": 952, "count": 16, "type": "analog"},
+    },
     "0BA8": {
         "I":   {"start": 1024, "count": 24, "type": "digital"},
         "Q":   {"start": 1064, "count": 20, "type": "digital"},
@@ -27,6 +40,19 @@ VM_MAPS = {
         "AQ":  {"start": 1072, "count": 8,  "type": "analog"},
         "NAI": {"start": 1262, "count": 32, "type": "analog"},
         "NAQ": {"start": 1326, "count": 16, "type": "analog"},
+        "AM":  {"start": 1118, "count": 64, "type": "analog"},
+    },
+    "0BA9": {
+        "I":   {"start": 1024, "count": 24, "type": "digital"},
+        "Q":   {"start": 1064, "count": 20, "type": "digital"},
+        "M":   {"start": 1104, "count": 64, "type": "digital"},
+        "NI":  {"start": 0,    "count": 64, "type": "digital"},
+        "NQ":  {"start": 1254, "count": 64, "type": "digital"},
+        "AI":  {"start": 1032, "count": 8,  "type": "analog"},
+        "AQ":  {"start": 1072, "count": 8,  "type": "analog"},
+        "NAI": {"start": 1262, "count": 32, "type": "analog"},
+        "NAQ": {"start": 1326, "count": 16, "type": "analog"},
+        "AM":  {"start": 1118, "count": 64, "type": "analog"},
     },
 }
 
@@ -43,6 +69,7 @@ PLATFORM_MAP = {
     "NQ": "binary_sensor",
     "AI": "sensor",
     "AQ": "sensor",
+    "AM": "sensor",
     "NAI": "number",
     "NAQ": "sensor",
 }

@@ -141,6 +141,8 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 1: Connection settings."""
         errors = {}
         if user_input is not None:
+            await self.async_set_unique_id(user_input[CONF_HOST])
+            self._abort_if_unique_id_configured()
             if not await _test_connection(
                 self.hass,
                 user_input[CONF_HOST],

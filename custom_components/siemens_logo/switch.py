@@ -6,30 +6,30 @@ import logging
 from snap7.util import get_bool
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_ENTITIES, DOMAIN
-from .coordinator import LogoDataUpdateCoordinator
+from . import LogoConfigEntry
+from .const import CONF_ENTITIES, CONF_HOST, CONF_MODEL
+from .entity import LogoEntity, make_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: LogoConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up LOGO! switches from a config entry."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: LogoDataUpdateCoordinator = data["coordinator"]
-    connection = data["connection"]
+    coordinator = entry.runtime_data.coordinator
+    connection = entry.runtime_data.connection
+    device_info = make_device_info(entry.entry_id, entry.data[CONF_HOST], entry.data[CONF_MODEL])
 
     entities = [
         LogoSwitch(
             coordinator=coordinator,
             connection=connection,
             entry_id=entry.entry_id,
+            device_info=device_info,
             name=entity_cfg["name"],
             block=entity_cfg["block"],
             number=entity_cfg["number"],
@@ -44,27 +44,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class LogoSwitch(CoordinatorEntity, SwitchEntity):
+class LogoSwitch(LogoEntity, SwitchEntity):
     """A switch that writes a digital bit to the LOGO! PLC."""
 
-    def __init__(
-        self,
-        coordinator: LogoDataUpdateCoordinator,
-        connection,
-        entry_id: str,
-        name: str,
-        block: str,
-        number: int,
-        byte_offset: int,
-        bit_offset: int,
-        unique_id: str | None,
-    ) -> None:
-        super().__init__(coordinator)
+    def __init__(self, connection, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._connection = connection
-        self._byte_offset = byte_offset
-        self._bit_offset = bit_offset
-        self._attr_name = name
-        self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
 
     @property
     def is_on(self) -> bool | None:

@@ -8,6 +8,11 @@ import pytest
 from siemens_logo.switch import LogoSwitch
 
 
+def _make_device_info():
+    from homeassistant.helpers.device_registry import DeviceInfo
+    return DeviceInfo(identifiers={("siemens_logo", "test_entry")})
+
+
 def _make_coordinator(vm_data: bytearray, vm_start: int = 0):
     coord = MagicMock()
     coord.data = vm_data
@@ -23,9 +28,10 @@ def _make_switch(byte_offset: int = 0, bit_offset: int = 0, vm_data: bytearray |
     connection = MagicMock()
     connection.write_vm_bool = MagicMock()
     switch = LogoSwitch(
-        coordinator=coordinator,
         connection=connection,
+        coordinator=coordinator,
         entry_id="test_entry",
+        device_info=_make_device_info(),
         name="Test Switch",
         block="NI",
         number=1,
@@ -42,9 +48,10 @@ class TestLogoSwitchIsOn:
     def test_returns_none_when_no_data(self) -> None:
         coordinator = _make_coordinator(None)
         switch = LogoSwitch(
-            coordinator=coordinator,
             connection=MagicMock(),
+            coordinator=coordinator,
             entry_id="e",
+            device_info=_make_device_info(),
             name="S",
             block="NI",
             number=1,
@@ -75,11 +82,11 @@ class TestLogoSwitchIsOn:
         # Entity at byte_offset=5, vm_start=4 → local_offset=1
         vm_data = bytearray(b"\x00\x01")  # byte 1 has bit 0 set
         coordinator = _make_coordinator(vm_data, vm_start=4)
-        connection = MagicMock()
         switch = LogoSwitch(
+            connection=MagicMock(),
             coordinator=coordinator,
-            connection=connection,
             entry_id="e",
+            device_info=_make_device_info(),
             name="S",
             block="NI",
             number=1,
@@ -116,9 +123,10 @@ class TestLogoSwitchUniqueId:
     def test_uses_provided_unique_id(self) -> None:
         coordinator = _make_coordinator(bytearray(1))
         switch = LogoSwitch(
-            coordinator=coordinator,
             connection=MagicMock(),
+            coordinator=coordinator,
             entry_id="e",
+            device_info=_make_device_info(),
             name="S",
             block="NI",
             number=1,
@@ -127,3 +135,11 @@ class TestLogoSwitchUniqueId:
             unique_id="my_custom_uid",
         )
         assert switch._attr_unique_id == "my_custom_uid"
+
+    def test_has_entity_name_is_true(self) -> None:
+        switch = _make_switch()
+        assert switch._attr_has_entity_name is True
+
+    def test_device_info_is_set(self) -> None:
+        switch = _make_switch()
+        assert switch._attr_device_info is not None

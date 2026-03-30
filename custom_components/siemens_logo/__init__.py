@@ -1,6 +1,7 @@
 """Siemens LOGO! PLC integration for Home Assistant."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import threading
 
@@ -9,6 +10,7 @@ from snap7.util import get_bool, set_bool, get_int, set_int
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_ENTITIES,
@@ -25,6 +27,17 @@ from .const import (
 from .coordinator import LogoDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class LogoRuntimeData:
+    """Runtime data stored on the config entry."""
+
+    connection: LogoConnection
+    coordinator: LogoDataUpdateCoordinator
+
+
+type LogoConfigEntry = ConfigEntry[LogoRuntimeData]
 
 
 class LogoConnection:
@@ -93,7 +106,7 @@ class LogoConnection:
             self._client.db_write(1, byte_offset, data)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: LogoConfigEntry) -> bool:
     """Set up Siemens LOGO! from a config entry."""
     host = entry.data[CONF_HOST]
     rack = entry.data.get(CONF_RACK, DEFAULT_RACK)
@@ -105,30 +118,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await hass.async_add_executor_job(connection.connect)
     except Exception as err:
-        _LOGGER.error("Failed to connect to LOGO! at %s: %s", host, err)
-        return False
+        raise ConfigEntryNotReady(
+            f"Cannot connect to LOGO! at {host}: {err}"
+        ) from err
 
     coordinator = LogoDataUpdateCoordinator(
         hass, connection, entry.data.get(CONF_ENTITIES, []), scan_interval
     )
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "connection": connection,
-        "coordinator": coordinator,
-    }
+    entry.runtime_data = LogoRuntimeData(connection=connection, coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: LogoConfigEntry) -> bool:
     """Unload a Siemens LOGO! config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        data = hass.data[DOMAIN].pop(entry.entry_id)
-        await hass.async_add_executor_job(data["connection"].disconnect)
+        await hass.async_add_executor_job(entry.runtime_data.connection.disconnect)
 
     return unload_ok

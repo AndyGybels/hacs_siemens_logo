@@ -4,26 +4,26 @@ from __future__ import annotations
 from snap7.util import get_bool
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_ENTITIES, DOMAIN
-from .coordinator import LogoDataUpdateCoordinator
+from . import LogoConfigEntry
+from .const import CONF_ENTITIES, CONF_HOST, CONF_MODEL
+from .entity import LogoEntity, make_device_info
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: LogoConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up LOGO! binary sensors from a config entry."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: LogoDataUpdateCoordinator = data["coordinator"]
+    coordinator = entry.runtime_data.coordinator
+    device_info = make_device_info(entry.entry_id, entry.data[CONF_HOST], entry.data[CONF_MODEL])
 
     entities = [
         LogoBinarySensor(
             coordinator=coordinator,
             entry_id=entry.entry_id,
+            device_info=device_info,
             name=entity_cfg["name"],
             block=entity_cfg["block"],
             number=entity_cfg["number"],
@@ -38,25 +38,8 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class LogoBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class LogoBinarySensor(LogoEntity, BinarySensorEntity):
     """A binary sensor reading a digital bit from the LOGO! PLC."""
-
-    def __init__(
-        self,
-        coordinator: LogoDataUpdateCoordinator,
-        entry_id: str,
-        name: str,
-        block: str,
-        number: int,
-        byte_offset: int,
-        bit_offset: int,
-        unique_id: str | None,
-    ) -> None:
-        super().__init__(coordinator)
-        self._byte_offset = byte_offset
-        self._bit_offset = bit_offset
-        self._attr_name = name
-        self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
 
     @property
     def is_on(self) -> bool | None:

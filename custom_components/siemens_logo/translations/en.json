@@ -43,6 +43,9 @@
       "cannot_connect": "Cannot connect to LOGO! at the specified address",
       "invalid_entity": "Invalid entity address. Use format like NI1, AI3, Q1",
       "invalid_address": "Invalid address format. Use byte.bit for digital (e.g. 0.0) or byte for analog."
+    },
+    "abort": {
+      "already_configured": "This LOGO! device is already configured"
     }
   },
   "options": {

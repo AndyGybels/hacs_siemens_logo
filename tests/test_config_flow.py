@@ -380,3 +380,104 @@ class TestOptionsFlow:
         defaults = {k.schema: k.default() for k in schema.schema}
         # Current entry has NI1, NI2, Q1, AI1
         assert "NI1" in defaults[CONF_ENTITIES]
+
+
+# ---------------------------------------------------------------------------
+# Reconfigure flow
+# ---------------------------------------------------------------------------
+class TestReconfigureFlow:
+    """Test async_step_reconfigure."""
+
+    @pytest.fixture
+    def flow(self) -> SiemensLogoConfigFlow:
+        flow = SiemensLogoConfigFlow()
+        entry = MagicMock()
+        entry.data = _conn_data()
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.hass = MagicMock()
+        flow.hass.config_entries = MagicMock()
+        flow.async_show_form = MagicMock(return_value={"type": "form", "step_id": "reconfigure"})
+        flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
+        return flow
+
+    async def test_shows_prefilled_form(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_reconfigure(None)
+        flow.async_show_form.assert_called_once()
+        _, kwargs = flow.async_show_form.call_args
+        assert kwargs["step_id"] == "reconfigure"
+
+    async def test_connection_failure_shows_error(self, flow: SiemensLogoConfigFlow) -> None:
+        with patch(
+            "siemens_logo.config_flow._test_connection",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            await flow.async_step_reconfigure(_conn_data())
+        _, kwargs = flow.async_show_form.call_args
+        assert kwargs["errors"].get("base") == "cannot_connect"
+
+    async def test_valid_input_updates_and_aborts(self, flow: SiemensLogoConfigFlow) -> None:
+        with patch(
+            "siemens_logo.config_flow._test_connection",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await flow.async_step_reconfigure(_conn_data())
+        flow.async_update_reload_and_abort.assert_called_once()
+
+    async def test_updates_entry_data(self, flow: SiemensLogoConfigFlow) -> None:
+        new_data = _conn_data(host="10.0.0.2", scan_interval=500)
+        with patch(
+            "siemens_logo.config_flow._test_connection",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await flow.async_step_reconfigure(new_data)
+        flow.hass.config_entries.async_update_entry.assert_called_once()
+        _, kwargs = flow.hass.config_entries.async_update_entry.call_args
+        assert kwargs["data"]["host"] == "10.0.0.2"
+        assert kwargs["data"]["scan_interval"] == 500
+
+
+# ---------------------------------------------------------------------------
+# Duplicate entry prevention
+# ---------------------------------------------------------------------------
+class TestUniqueConfigEntry:
+    """Test that the same device cannot be added twice."""
+
+    async def test_aborts_if_unique_id_already_configured(self) -> None:
+        flow = SiemensLogoConfigFlow()
+        flow.hass = MagicMock()
+
+        # Simulate async_set_unique_id succeeding (no duplicate)
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_entities = AsyncMock(return_value={"type": "form"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+        with patch(
+            "siemens_logo.config_flow._test_connection",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await flow.async_step_user(_conn_data())
+
+        flow.async_set_unique_id.assert_called_once_with("192.168.1.100")
+        flow._abort_if_unique_id_configured.assert_called_once()
+
+    async def test_unique_id_set_to_host(self) -> None:
+        flow = SiemensLogoConfigFlow()
+        flow.hass = MagicMock()
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_entities = AsyncMock(return_value={"type": "form"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+        with patch(
+            "siemens_logo.config_flow._test_connection",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await flow.async_step_user(_conn_data(host="10.0.0.99"))
+
+        flow.async_set_unique_id.assert_called_once_with("10.0.0.99")

@@ -5,26 +5,28 @@ import asyncio
 import logging
 
 from homeassistant.components.button import ButtonEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BUTTON_PULSE_MS, CONF_ENTITIES, DOMAIN
+from . import LogoConfigEntry
+from .const import BUTTON_PULSE_MS, CONF_ENTITIES, CONF_HOST, CONF_MODEL
+from .entity import make_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: LogoConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up LOGO! push buttons from a config entry."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    connection = data["connection"]
+    connection = entry.runtime_data.connection
+    device_info = make_device_info(entry.entry_id, entry.data[CONF_HOST], entry.data[CONF_MODEL])
 
     entities = [
         LogoButton(
             connection=connection,
             entry_id=entry.entry_id,
+            device_info=device_info,
             name=entity_cfg["name"],
             block=entity_cfg["block"],
             number=entity_cfg["number"],
@@ -42,10 +44,13 @@ async def async_setup_entry(
 class LogoButton(ButtonEntity):
     """A momentary push button that pulses a digital bit on the LOGO! PLC."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         connection,
         entry_id: str,
+        device_info,
         name: str,
         block: str,
         number: int,
@@ -58,6 +63,7 @@ class LogoButton(ButtonEntity):
         self._bit_offset = bit_offset
         self._attr_name = name
         self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
+        self._attr_device_info = device_info
 
     async def async_press(self) -> None:
         _LOGGER.debug(

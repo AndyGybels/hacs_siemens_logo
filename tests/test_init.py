@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from siemens_logo import LogoConnection, async_setup_entry, async_unload_entry
-from siemens_logo.const import DOMAIN
+from homeassistant.exceptions import ConfigEntryNotReady
+
+from siemens_logo import LogoConnection, LogoRuntimeData, async_setup_entry, async_unload_entry
 
 from .conftest import MOCK_ENTRY_DATA
 
@@ -15,10 +16,11 @@ def _make_entry(data=None):
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
     entry.data = data or MOCK_ENTRY_DATA.copy()
+    entry.runtime_data = None
     return entry
 
 
-def _make_hass(entry_id="test_entry_id"):
+def _make_hass():
     hass = MagicMock()
     hass.data = {}
     hass.async_add_executor_job = AsyncMock(return_value=None)
@@ -45,7 +47,6 @@ class TestLogoConnection:
         conn = LogoConnection("192.168.1.1", 0, 1)
         conn._client = mock_snap7_client
         conn.write_vm_bool(0, 0, True)
-        # Should read once (to modify bit), write once, then readback once
         assert mock_snap7_client.db_read.call_count >= 1
         assert mock_snap7_client.db_write.call_count == 1
 
@@ -55,7 +56,6 @@ class TestLogoConnection:
         conn.write_vm_int(1032, 42)
         mock_snap7_client.db_write.assert_called_once()
         _, args, _ = mock_snap7_client.db_write.mock_calls[0]
-        # db_write(1, byte_offset, data) - data should be 2 bytes
         assert args[0] == 1
         assert args[1] == 1032
         assert len(args[2]) == 2
@@ -72,7 +72,7 @@ class TestLogoConnection:
 class TestAsyncSetupEntry:
     """Tests for async_setup_entry."""
 
-    async def test_setup_registers_domain_data(self) -> None:
+    async def test_setup_stores_runtime_data(self) -> None:
         hass = _make_hass()
         entry = _make_entry()
 
@@ -89,20 +89,18 @@ class TestAsyncSetupEntry:
             result = await async_setup_entry(hass, entry)
 
         assert result is True
-        assert DOMAIN in hass.data
-        assert entry.entry_id in hass.data[DOMAIN]
-        assert "connection" in hass.data[DOMAIN][entry.entry_id]
-        assert "coordinator" in hass.data[DOMAIN][entry.entry_id]
+        assert isinstance(entry.runtime_data, LogoRuntimeData)
+        assert entry.runtime_data.connection is mock_conn
+        assert entry.runtime_data.coordinator is mock_coord
 
-    async def test_setup_returns_false_on_connect_error(self) -> None:
+    async def test_setup_raises_config_entry_not_ready_on_connect_error(self) -> None:
         hass = _make_hass()
         entry = _make_entry()
         hass.async_add_executor_job = AsyncMock(side_effect=Exception("connection refused"))
 
         with patch("siemens_logo.LogoConnection"):
-            result = await async_setup_entry(hass, entry)
-
-        assert result is False
+            with pytest.raises(ConfigEntryNotReady):
+                await async_setup_entry(hass, entry)
 
     async def test_setup_forwards_to_all_platforms(self) -> None:
         hass = _make_hass()
@@ -124,44 +122,31 @@ class TestAsyncSetupEntry:
 class TestAsyncUnloadEntry:
     """Tests for async_unload_entry."""
 
-    async def test_unload_disconnects_and_removes_data(self) -> None:
+    async def test_unload_disconnects_connection(self) -> None:
         hass = _make_hass()
         entry = _make_entry()
-
         mock_conn = MagicMock()
-        hass.data = {
-            DOMAIN: {
-                entry.entry_id: {
-                    "connection": mock_conn,
-                    "coordinator": MagicMock(),
-                }
-            }
-        }
+        entry.runtime_data = LogoRuntimeData(
+            connection=mock_conn,
+            coordinator=MagicMock(),
+        )
 
         result = await async_unload_entry(hass, entry)
 
         assert result is True
-        assert entry.entry_id not in hass.data[DOMAIN]
-        # disconnect should have been scheduled via executor
-        hass.async_add_executor_job.assert_called()
+        hass.async_add_executor_job.assert_called_with(mock_conn.disconnect)
 
-    async def test_unload_preserves_data_on_platform_failure(self) -> None:
+    async def test_unload_does_not_disconnect_on_platform_failure(self) -> None:
         hass = _make_hass()
         hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
         entry = _make_entry()
-
         mock_conn = MagicMock()
-        hass.data = {
-            DOMAIN: {
-                entry.entry_id: {
-                    "connection": mock_conn,
-                    "coordinator": MagicMock(),
-                }
-            }
-        }
+        entry.runtime_data = LogoRuntimeData(
+            connection=mock_conn,
+            coordinator=MagicMock(),
+        )
 
         result = await async_unload_entry(hass, entry)
 
         assert result is False
-        # Data should still be there since unload failed
-        assert entry.entry_id in hass.data[DOMAIN]
+        hass.async_add_executor_job.assert_not_called()
