@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main", "master", "dev"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements_test.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pip install -r requirements_test.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --no-header
