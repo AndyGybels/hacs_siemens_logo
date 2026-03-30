@@ -15,6 +15,7 @@ def _make_button(byte_offset: int = 0, bit_offset: int = 0, unique_id: str | Non
     button = LogoButton(
         connection=connection,
         entry_id="test_entry",
+        device_info=MagicMock(),
         name="Test Button",
         block="NI",
         number=1,

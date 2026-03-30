@@ -97,11 +97,15 @@ class TestBuildAddressesSchema:
             }
         ]
         schema = _build_addresses_schema(entities)
-        keys = [k.schema for k in schema.schema]
-        assert "NI1" in keys
-        assert "NI1_name" in keys
-        assert "NI1_unique_id" in keys
-        assert "NI1_push" in keys
+        outer_keys = [k.schema for k in schema.schema]
+        assert "NI1" in outer_keys
+        # Inner fields live inside the section
+        ni1_key = next(k for k in schema.schema if k.schema == "NI1")
+        inner_keys = [k.schema for k in schema.schema[ni1_key].schema.schema]
+        assert "NI1" in inner_keys
+        assert "NI1_name" in inner_keys
+        assert "NI1_unique_id" in inner_keys
+        assert "NI1_push" in inner_keys
 
     def test_q_entity_has_no_push_field(self) -> None:
         entities = [
@@ -131,7 +135,9 @@ class TestBuildAddressesSchema:
             }
         ]
         schema = _build_addresses_schema(entities)
-        defaults = {k.schema: k.default() for k in schema.schema}
+        ni1_key = next(k for k in schema.schema if k.schema == "NI1")
+        inner_schema = schema.schema[ni1_key].schema
+        defaults = {k.schema: k.default() for k in inner_schema.schema}
         assert defaults["NI1"] == "3.5"
         assert defaults["NI1_name"] == "My Switch"
 
@@ -218,6 +224,9 @@ class TestConfigFlowStepUser:
         flow.hass.async_add_executor_job = AsyncMock(return_value=None)
         flow.async_show_form = MagicMock(return_value={"type": "form", "step_id": "user"})
         flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        # context is a read-only mappingproxy when instantiated outside HA's flow manager
+        flow.async_set_unique_id = AsyncMock(return_value=None)
+        flow._abort_if_unique_id_configured = MagicMock()
         return flow
 
     async def test_shows_form_on_first_call(self, flow: SiemensLogoConfigFlow) -> None:

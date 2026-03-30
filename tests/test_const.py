@@ -48,7 +48,7 @@ class TestResolveAddress:
 
     def test_unknown_model_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown LOGO! model"):
-            resolve_address("0BA9", "NI", 1)
+            resolve_address("0BA6", "NI", 1)
 
     def test_unknown_block_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown block"):

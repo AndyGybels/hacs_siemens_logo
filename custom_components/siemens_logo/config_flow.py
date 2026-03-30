@@ -79,11 +79,11 @@ def _build_addresses_schema(entities: list[dict]) -> vol.Schema:
 def _flatten_section_input(user_input: dict) -> dict:
     """Flatten section-nested user_input into a single-level dict for _apply_address_overrides."""
     flat: dict = {}
-    for value in user_input.values():
+    for key, value in user_input.items():
         if isinstance(value, dict):
             flat.update(value)
         else:
-            flat[value] = value
+            flat[key] = value
     return flat
 
 
