@@ -24,10 +24,25 @@ if "snap7" not in sys.modules:
     _snap7_client = types.ModuleType("snap7.client")
     _snap7_util = types.ModuleType("snap7.util")
 
-    _snap7_util.get_bool = MagicMock(return_value=False)
-    _snap7_util.set_bool = MagicMock()
-    _snap7_util.get_int = MagicMock(return_value=0)
-    _snap7_util.set_int = MagicMock()
+    def _get_bool(bytearray_: bytearray, byte_index: int, bool_index: int) -> bool:
+        return bool(bytearray_[byte_index] & (1 << bool_index))
+
+    def _set_bool(bytearray_: bytearray, byte_index: int, bool_index: int, value: bool) -> None:
+        if value:
+            bytearray_[byte_index] |= 1 << bool_index
+        else:
+            bytearray_[byte_index] &= ~(1 << bool_index)
+
+    def _get_int(bytearray_: bytearray, byte_index: int) -> int:
+        return int.from_bytes(bytearray_[byte_index:byte_index + 2], byteorder="big", signed=True)
+
+    def _set_int(bytearray_: bytearray, byte_index: int, value: int) -> None:
+        bytearray_[byte_index:byte_index + 2] = value.to_bytes(2, byteorder="big", signed=True)
+
+    _snap7_util.get_bool = _get_bool
+    _snap7_util.set_bool = _set_bool
+    _snap7_util.get_int = _get_int
+    _snap7_util.set_int = _set_int
 
     _snap7_client.Client = MagicMock
 
