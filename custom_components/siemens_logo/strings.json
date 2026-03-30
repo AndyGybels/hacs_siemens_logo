@@ -45,7 +45,8 @@
       "invalid_address": "Invalid address format. Use byte.bit for digital (e.g. 0.0) or byte for analog."
     },
     "abort": {
-      "already_configured": "This LOGO! device is already configured"
+      "already_configured": "This LOGO! device is already configured",
+      "invalid_entity": "Invalid entity in configuration.yaml — check the logs for details"
     }
   },
   "options": {

@@ -20,7 +20,7 @@
 1. Copy the `custom_components/siemens_logo` folder into your Home Assistant `config/custom_components/` directory
 2. Restart Home Assistant
 
-After installing, follow [Setup & Options](Setup-and-Options) to add the integration via the UI, or [Manual Configuration](Manual-Configuration) for a storage-file approach.
+After installing, follow [Setup & Options](Setup-and-Options) to add the integration via the UI, or [Manual Configuration](Manual-Configuration) to configure via `configuration.yaml` or by editing the storage file directly.
 
 ## Removing the integration
 

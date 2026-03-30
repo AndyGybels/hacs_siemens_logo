@@ -7,7 +7,14 @@ import pytest
 
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from siemens_logo import LogoConnection, LogoRuntimeData, async_setup_entry, async_unload_entry
+from siemens_logo import (
+    DOMAIN,
+    LogoConnection,
+    LogoRuntimeData,
+    async_setup,
+    async_setup_entry,
+    async_unload_entry,
+)
 
 from .conftest import MOCK_ENTRY_DATA
 
@@ -28,6 +35,103 @@ def _make_hass():
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     return hass
+
+
+def _make_yaml_config(**overrides) -> dict:
+    base = {
+        "host": "192.168.1.50",
+        "rack": 0,
+        "slot": 1,
+        "model": "0BA8",
+        "scan_interval": 1000,
+        "entities": [{"block": "NI1", "name": "Pump"}],
+    }
+    base.update(overrides)
+    return base
+
+
+class TestAsyncSetup:
+    """Tests for async_setup — YAML import dispatch and service registration."""
+
+    async def test_returns_true_with_no_yaml_config(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+        result = await async_setup(hass, {})
+        assert result is True
+
+    async def test_fires_import_flow_for_each_yaml_device(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+        hass.async_create_task = MagicMock()
+        hass.config_entries.flow.async_init = AsyncMock(return_value=None)
+
+        config = {
+            DOMAIN: [
+                _make_yaml_config(host="192.168.1.10"),
+                _make_yaml_config(host="192.168.1.11"),
+            ]
+        }
+        await async_setup(hass, config)
+
+        assert hass.async_create_task.call_count == 2
+
+    async def test_import_flow_called_with_source_import(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+
+        captured_coros = []
+        hass.async_create_task = lambda coro: captured_coros.append(coro)
+        hass.config_entries.flow.async_init = AsyncMock(return_value=None)
+
+        config = {DOMAIN: [_make_yaml_config()]}
+        await async_setup(hass, config)
+
+        # Drain the coroutine so async_init is actually called
+        assert len(captured_coros) == 1
+        await captured_coros[0]
+
+        hass.config_entries.flow.async_init.assert_called_once()
+        _, kwargs = hass.config_entries.flow.async_init.call_args
+        assert kwargs["context"]["source"] == "import"
+
+    async def test_no_import_flow_when_domain_absent(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+        hass.async_create_task = MagicMock()
+
+        await async_setup(hass, {"other_domain": {}})
+
+        hass.async_create_task.assert_not_called()
+
+    async def test_registers_write_block_service(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+
+        await async_setup(hass, {})
+
+        registered = [
+            call.args[1]
+            for call in hass.services.async_register.call_args_list
+        ]
+        assert "write_block" in registered
+
+    async def test_registers_read_block_service(self) -> None:
+        hass = _make_hass()
+        hass.services = MagicMock()
+        hass.services.async_register = MagicMock()
+
+        await async_setup(hass, {})
+
+        registered = [
+            call.args[1]
+            for call in hass.services.async_register.call_args_list
+        ]
+        assert "read_block" in registered
 
 
 class TestLogoConnection:

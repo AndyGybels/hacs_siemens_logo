@@ -9,9 +9,11 @@ import snap7
 from snap7.util import get_bool, set_bool, get_int, set_int
 import voluptuous as vol
 
+from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -25,7 +27,9 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SLOT,
     DOMAIN,
+    MIN_SCAN_INTERVAL,
     PLATFORMS,
+    VM_MAPS,
     parse_entity_string,
     resolve_address,
 )
@@ -46,6 +50,34 @@ READ_BLOCK_SCHEMA = vol.Schema(
         vol.Required("config_entry_id"): str,
         vol.Required("block"): str,
     }
+)
+
+_YAML_ENTITY_SCHEMA = vol.Schema(
+    {
+        vol.Required("block"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("address"): cv.string,
+        vol.Optional("unique_id"): cv.string,
+        vol.Optional("push_button", default=False): cv.boolean,
+    }
+)
+
+_YAML_DEVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): cv.string,
+        vol.Optional(CONF_RACK, default=DEFAULT_RACK): cv.positive_int,
+        vol.Optional(CONF_SLOT, default=DEFAULT_SLOT): cv.positive_int,
+        vol.Required(CONF_MODEL): vol.In(list(VM_MAPS.keys())),
+        vol.Optional(
+            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+        ): vol.All(int, vol.Range(min=MIN_SCAN_INTERVAL)),
+        vol.Required(CONF_ENTITIES): [_YAML_ENTITY_SCHEMA],
+    }
+)
+
+CONFIG_SCHEMA = vol.Schema(
+    {DOMAIN: vol.All(cv.ensure_list, [_YAML_DEVICE_SCHEMA])},
+    extra=vol.ALLOW_EXTRA,
 )
 
 
@@ -137,7 +169,15 @@ def _get_runtime_data(hass: HomeAssistant, entry_id: str) -> LogoRuntimeData:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register domain-level service actions."""
+    """Register domain-level service actions and handle YAML import."""
+    for conf in config.get(DOMAIN, []):
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_IMPORT},
+                data=conf,
+            )
+        )
 
     async def handle_write_block(call: ServiceCall) -> None:
         """Write a value to any LOGO! block address."""

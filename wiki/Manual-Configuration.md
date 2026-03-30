@@ -1,18 +1,83 @@
 # Manual Configuration
 
-This integration is config-entry based and is normally set up through the UI. There is no `configuration.yaml` support. However, you can create or edit a config entry directly by editing the Home Assistant storage file — useful for scripted deployments, migrating between systems, or bulk-editing many entities without clicking through the UI.
+You can configure the integration without the UI in two ways:
 
-> **Warning:** editing storage files directly can corrupt your HA configuration if the JSON is malformed. Always make a backup first.
+- **`configuration.yaml`** — declare devices and entities in YAML; HA imports them automatically on startup
+- **Storage file editing** — edit the config entry JSON directly; useful for bulk changes to an existing entry
 
-## Storage file location
+---
+
+## configuration.yaml
+
+Add a `siemens_logo` block to your `configuration.yaml`. Multiple devices are supported as a list.
+
+```yaml
+siemens_logo:
+  - host: 192.168.1.50
+    model: 0BA8          # 0BA7, 0BA8, or 0BA9
+    rack: 0              # optional, default 0
+    slot: 1              # optional, default 1
+    scan_interval: 1000  # optional, milliseconds, default 1000
+    entities:
+      - block: NI1
+        name: Pump
+      - block: NI2
+        name: Reset button
+        push_button: true
+      - block: Q1
+        name: Motor running
+      - block: AI1
+        name: Tank level
+      - block: NAI1
+        name: Setpoint
+        address: "1262"    # optional VM address override
+        unique_id: logo_setpoint_1  # optional
+```
+
+After adding or changing the YAML, restart Home Assistant. The integration creates a config entry automatically — the device will then appear under **Settings → Devices & Services** just like a UI-configured entry.
+
+> If the host is already configured (e.g. from a previous UI setup), the import is silently skipped to avoid duplicates.
+
+### Entity fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `block` | Yes | Block reference, e.g. `NI1`, `Q3`, `AI2` |
+| `name` | No | Friendly name shown in HA. Defaults to `LOGO NI1` etc. |
+| `push_button` | No | `true` to use button mode for NI entities (default `false`) |
+| `address` | No | VM address override — `byte.bit` for digital, `byte` for analog. Overrides the default for this entity. |
+| `unique_id` | No | Custom unique ID. Leave out to auto-generate. |
+
+### Supported block types
+
+| Block | Platform | Models |
+|-------|----------|--------|
+| `I` | Binary Sensor | All |
+| `Q` | Binary Sensor | All |
+| `M` | Binary Sensor | All |
+| `AI`, `AQ`, `AM` | Sensor | All |
+| `NI` | Switch or Button | 0BA8, 0BA9 |
+| `NQ` | Binary Sensor | 0BA8, 0BA9 |
+| `NAI` | Number | 0BA8, 0BA9 |
+| `NAQ` | Sensor | 0BA8, 0BA9 |
+
+---
+
+## Storage file editing
+
+For bulk-editing an existing config entry without going through the UI, you can edit the storage file directly.
+
+> **Warning:** always make a backup before editing storage files — malformed JSON will prevent HA from starting.
+
+### File location
 
 ```
 config/.storage/core.config_entries
 ```
 
-## Entry structure
+### Entry structure
 
-Each LOGO! integration instance is one entry in the `data.entries` array. A complete entry looks like this:
+Each LOGO! device is one entry in the `data.entries` array:
 
 ```json
 {
@@ -82,42 +147,21 @@ Each LOGO! integration instance is one entry in the `data.entries` array. A comp
 }
 ```
 
-## Field reference
-
-### Connection fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `host` | string | IP address of the LOGO! |
-| `rack` | int | S7 rack number, typically `0` |
-| `slot` | int | S7 slot number, typically `1` |
-| `model` | string | `"0BA7"`, `"0BA8"`, or `"0BA9"` |
-| `scan_interval` | int | Poll interval in milliseconds (min 100) |
-
-### Entity fields
+### Entity field reference
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `block` | string | Block type: `I`, `Q`, `M`, `NI`, `NQ`, `AI`, `AQ`, `AM`, `NAI`, `NAQ` |
 | `number` | int | Block number (1-based) |
-| `platform` | string | HA platform — see table below |
-| `name` | string | Friendly name shown in HA |
+| `platform` | string | `binary_sensor`, `sensor`, `switch`, `button`, or `number` |
+| `name` | string | Friendly name |
 | `unique_id` | string or null | Custom unique ID, or `null` to auto-generate |
-| `byte_offset` | int | VM byte offset (see [VM Addresses](VM-Addresses)) |
-| `bit_offset` | int or null | Bit position within byte for digital blocks, `null` for analog |
+| `byte_offset` | int | VM byte offset |
+| `bit_offset` | int or null | Bit within byte for digital, `null` for analog |
 
-### Platform values
+### Computing VM addresses
 
-| Block | Normal platform | Push button platform |
-|-------|----------------|----------------------|
-| `I`, `Q`, `M`, `NQ` | `"binary_sensor"` | — |
-| `NI` | `"switch"` | `"button"` |
-| `AI`, `AQ`, `AM`, `NAQ` | `"sensor"` | — |
-| `NAI` | `"number"` | — |
-
-## Computing VM addresses
-
-Use the tables in [VM Addresses](VM-Addresses) to compute `byte_offset` and `bit_offset` for each entity.
+See [VM Addresses](VM-Addresses) for the start offsets per block and model.
 
 **Digital blocks** (I, Q, M, NI, NQ):
 ```
@@ -143,11 +187,7 @@ byte_offset = 1032 + (2 - 1) * 2 = 1034
 bit_offset  = null
 ```
 
-## Applying the changes
-
-After editing the file:
+### Applying changes
 
 1. Verify the JSON is valid (e.g. paste it into [jsonlint.com](https://jsonlint.com))
 2. Restart Home Assistant
-
-The integration will load the entry on startup and create all entities automatically.

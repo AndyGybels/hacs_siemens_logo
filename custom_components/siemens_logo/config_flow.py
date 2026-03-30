@@ -181,6 +181,58 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._entities: list[dict] = []
 
     # ------------------------------------------------------------------
+    # YAML import
+    # ------------------------------------------------------------------
+
+    async def async_step_import(self, import_data: dict):
+        """Create a config entry from a configuration.yaml entry."""
+        await self.async_set_unique_id(import_data[CONF_HOST])
+        self._abort_if_unique_id_configured()
+
+        model = import_data[CONF_MODEL]
+        vm_map = VM_MAPS.get(model, {})
+        entities = []
+        for e in import_data[CONF_ENTITIES]:
+            try:
+                block_name, block_number = parse_entity_string(e["block"])
+                if "address" in e:
+                    block_type = vm_map.get(block_name, {}).get("type", "digital")
+                    byte_offset, bit_offset = parse_address(e["address"], block_type)
+                else:
+                    byte_offset, bit_offset = resolve_address(model, block_name, block_number)
+            except ValueError as err:
+                _LOGGER.error("Invalid YAML entity '%s': %s", e["block"], err)
+                return self.async_abort(reason="invalid_entity")
+
+            is_push = e.get("push_button", False)
+            platform = "button" if is_push else get_platform(block_name)
+            name = e.get("name") or f"LOGO {block_name}{block_number}"
+            unique_id = e.get("unique_id") or None
+            entities.append(
+                {
+                    "block": block_name,
+                    "number": block_number,
+                    "platform": platform,
+                    "name": name,
+                    "unique_id": unique_id,
+                    "byte_offset": byte_offset,
+                    "bit_offset": bit_offset,
+                }
+            )
+
+        return self.async_create_entry(
+            title=f"LOGO! {import_data[CONF_HOST]}",
+            data={
+                CONF_HOST: import_data[CONF_HOST],
+                CONF_RACK: import_data.get(CONF_RACK, DEFAULT_RACK),
+                CONF_SLOT: import_data.get(CONF_SLOT, DEFAULT_SLOT),
+                CONF_MODEL: model,
+                CONF_SCAN_INTERVAL: import_data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                CONF_ENTITIES: entities,
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Initial setup
     # ------------------------------------------------------------------
 

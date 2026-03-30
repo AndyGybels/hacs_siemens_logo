@@ -1,5 +1,7 @@
 # Setup & Options
 
+> You can also configure the integration via `configuration.yaml` instead of the UI — see [Manual Configuration](Manual-Configuration).
+
 ## Adding the integration
 
 1. Go to **Settings → Devices & Services → Add Integration**

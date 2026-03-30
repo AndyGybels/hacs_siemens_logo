@@ -12,7 +12,17 @@ from siemens_logo.config_flow import (
     _build_addresses_schema,
     _parse_entities,
 )
-from siemens_logo.const import CONF_ENTITIES, CONF_HOST, CONF_MODEL, CONF_SCAN_INTERVAL
+from siemens_logo.const import (
+    CONF_ENTITIES,
+    CONF_HOST,
+    CONF_MODEL,
+    CONF_RACK,
+    CONF_SCAN_INTERVAL,
+    CONF_SLOT,
+    DEFAULT_RACK,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SLOT,
+)
 
 from .conftest import MOCK_ENTRY_DATA
 
@@ -475,6 +485,7 @@ class TestUniqueConfigEntry:
         flow._abort_if_unique_id_configured.assert_called_once()
 
     async def test_unique_id_set_to_host(self) -> None:
+
         flow = SiemensLogoConfigFlow()
         flow.hass = MagicMock()
         flow.async_set_unique_id = AsyncMock()
@@ -490,3 +501,148 @@ class TestUniqueConfigEntry:
             await flow.async_step_user(_conn_data(host="10.0.0.99"))
 
         flow.async_set_unique_id.assert_called_once_with("10.0.0.99")
+
+
+# ---------------------------------------------------------------------------
+# YAML import flow
+# ---------------------------------------------------------------------------
+def _import_data(**overrides) -> dict:
+    base = {
+        CONF_HOST: "192.168.1.50",
+        CONF_RACK: DEFAULT_RACK,
+        CONF_SLOT: DEFAULT_SLOT,
+        CONF_MODEL: "0BA8",
+        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+        CONF_ENTITIES: [{"block": "NI1", "name": "Pump"}],
+    }
+    base.update(overrides)
+    return base
+
+
+class TestImportFlow:
+    """Test async_step_import (configuration.yaml)."""
+
+    @pytest.fixture
+    def flow(self) -> SiemensLogoConfigFlow:
+        flow = SiemensLogoConfigFlow()
+        flow.hass = MagicMock()
+        flow.async_set_unique_id = AsyncMock(return_value=None)
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        return flow
+
+    async def test_creates_entry_with_correct_host(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        flow.async_create_entry.assert_called_once()
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_HOST] == "192.168.1.50"
+
+    async def test_creates_entry_with_correct_title(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["title"] == "LOGO! 192.168.1.50"
+
+    async def test_resolves_default_vm_address(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow.async_create_entry.call_args
+        entity = kwargs["data"][CONF_ENTITIES][0]
+        # NI1 on 0BA8: byte 0, bit 0
+        assert entity["byte_offset"] == 0
+        assert entity["bit_offset"] == 0
+
+    async def test_applies_address_override(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(
+            entities=[{"block": "NI1", "name": "Pump", "address": "3.5"}]
+        )
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        entity = kwargs["data"][CONF_ENTITIES][0]
+        assert entity["byte_offset"] == 3
+        assert entity["bit_offset"] == 5
+
+    async def test_push_button_flag_sets_button_platform(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(
+            entities=[{"block": "NI1", "name": "Reset", "push_button": True}]
+        )
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        entity = kwargs["data"][CONF_ENTITIES][0]
+        assert entity["platform"] == "button"
+
+    async def test_no_push_button_flag_uses_switch_platform(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow.async_create_entry.call_args
+        entity = kwargs["data"][CONF_ENTITIES][0]
+        assert entity["platform"] == "switch"
+
+    async def test_carries_name(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_ENTITIES][0]["name"] == "Pump"
+
+    async def test_default_name_when_omitted(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(entities=[{"block": "NI1"}])
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_ENTITIES][0]["name"] == "LOGO NI1"
+
+    async def test_carries_unique_id(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(
+            entities=[{"block": "NI1", "unique_id": "my_pump"}]
+        )
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_ENTITIES][0]["unique_id"] == "my_pump"
+
+    async def test_unique_id_none_when_omitted(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_ENTITIES][0]["unique_id"] is None
+
+    async def test_preserves_connection_fields(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(**{CONF_RACK: 1, CONF_SLOT: 2, CONF_SCAN_INTERVAL: 500})
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        assert kwargs["data"][CONF_RACK] == 1
+        assert kwargs["data"][CONF_SLOT] == 2
+        assert kwargs["data"][CONF_SCAN_INTERVAL] == 500
+
+    async def test_multiple_entities_all_resolved(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(
+            entities=[
+                {"block": "NI1", "name": "Pump"},
+                {"block": "Q1", "name": "Motor"},
+                {"block": "AI1", "name": "Level"},
+            ]
+        )
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        entities = kwargs["data"][CONF_ENTITIES]
+        assert len(entities) == 3
+        blocks = [e["block"] for e in entities]
+        assert blocks == ["NI", "Q", "AI"]
+
+    async def test_invalid_block_aborts(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(entities=[{"block": "BADBLOCK99"}])
+        await flow.async_step_import(data)
+        flow.async_abort.assert_called_once_with(reason="invalid_entity")
+        flow.async_create_entry.assert_not_called()
+
+    async def test_sets_unique_id_to_host(self, flow: SiemensLogoConfigFlow) -> None:
+        await flow.async_step_import(_import_data())
+        flow.async_set_unique_id.assert_called_once_with("192.168.1.50")
+
+    async def test_aborts_if_already_configured(self, flow: SiemensLogoConfigFlow) -> None:
+        flow._abort_if_unique_id_configured.side_effect = Exception("already configured")
+        with pytest.raises(Exception, match="already configured"):
+            await flow.async_step_import(_import_data())
+        flow.async_create_entry.assert_not_called()
+
+    async def test_analog_entity_has_no_bit_offset(self, flow: SiemensLogoConfigFlow) -> None:
+        data = _import_data(entities=[{"block": "AI1", "name": "Level"}])
+        await flow.async_step_import(data)
+        _, kwargs = flow.async_create_entry.call_args
+        entity = kwargs["data"][CONF_ENTITIES][0]
+        assert entity["bit_offset"] is None
+        assert entity["byte_offset"] == 1032  # AI1 on 0BA8
