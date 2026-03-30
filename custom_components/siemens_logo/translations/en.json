@@ -8,7 +8,10 @@
           "rack": "Rack",
           "slot": "Slot",
           "model": "LOGO! Model",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Poll Interval (ms)"
+        },
+        "data_description": {
+          "scan_interval": "How often to read the PLC state in milliseconds. Minimum 100ms. Setting this too low can overload the connection and cause the integration to stop working."
         }
       },
       "entities": {
@@ -20,7 +23,7 @@
       },
       "addresses": {
         "title": "VM Addresses",
-        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Enable 'Push button' to make an NI a momentary pulse instead of a toggle switch."
+        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one."
       },
       "reconfigure": {
         "title": "Reconfigure LOGO! connection",
@@ -29,7 +32,10 @@
           "rack": "Rack",
           "slot": "Slot",
           "model": "LOGO! Model",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Poll Interval (ms)"
+        },
+        "data_description": {
+          "scan_interval": "How often to read the PLC state in milliseconds. Minimum 100ms. Setting this too low can overload the connection and cause the integration to stop working."
         }
       }
     },
@@ -42,14 +48,28 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure Entities",
+        "title": "Connection Settings",
         "data": {
-          "entities": "Entities (e.g. NI1,NI2,AI1,Q1)"
+          "host": "IP Address",
+          "rack": "Rack",
+          "slot": "Slot",
+          "model": "LOGO! Model",
+          "scan_interval": "Poll Interval (ms)"
+        },
+        "data_description": {
+          "scan_interval": "How often to read the PLC state in milliseconds. Minimum 100ms. Setting this too low can overload the connection and cause the integration to stop working."
+        }
+      },
+      "entities": {
+        "title": "Configure Entities",
+        "description": "Enter LOGO! block addresses separated by commas.\nExample: {example}",
+        "data": {
+          "entities": "Entities"
         }
       },
       "addresses": {
         "title": "VM Addresses",
-        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032)."
+        "description": "Set the address, friendly name and optional unique ID for each entity. Address format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Leave unique ID blank to use the auto-generated one."
       }
     }
   }

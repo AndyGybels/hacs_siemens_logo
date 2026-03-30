@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_RACK,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SLOT,
+    MIN_SCAN_INTERVAL,
     DOMAIN,
     VM_MAPS,
     WRITABLE_DIGITAL,
@@ -39,7 +40,7 @@ def _connection_schema(defaults: dict) -> vol.Schema:
             vol.Optional(CONF_RACK, default=defaults.get(CONF_RACK, DEFAULT_RACK)): int,
             vol.Optional(CONF_SLOT, default=defaults.get(CONF_SLOT, DEFAULT_SLOT)): int,
             vol.Required(CONF_MODEL, default=defaults.get(CONF_MODEL, "0BA8")): vol.In(list(VM_MAPS.keys())),
-            vol.Optional(CONF_SCAN_INTERVAL, default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
+            vol.Optional(CONF_SCAN_INTERVAL, default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.All(int, vol.Range(min=MIN_SCAN_INTERVAL)),
         }
     )
 
@@ -50,13 +51,15 @@ def _build_addresses_schema(entities: list[dict]) -> vol.Schema:
     for e in entities:
         key = f"{e['block']}{e['number']}"
         fields[vol.Required(key, default=format_address(e["byte_offset"], e.get("bit_offset")))] = str
+        fields[vol.Required(f"{key}_name", default=e.get("name", f"LOGO {key}"))] = str
+        fields[vol.Optional(f"{key}_unique_id", default=e.get("unique_id", ""))] = str
         if e["block"] in WRITABLE_DIGITAL:
             fields[vol.Optional(f"{key}_push", default=e.get("platform") == "button")] = bool
     return vol.Schema(fields)
 
 
 def _apply_address_overrides(model: str, entities: list[dict], user_input: dict) -> list[dict]:
-    """Apply user-supplied address strings and push button flags to entity configs."""
+    """Apply user-supplied address strings, names, unique IDs and push button flags to entity configs."""
     vm_map = VM_MAPS.get(model, {})
     updated = []
     for e in entities:
@@ -65,7 +68,16 @@ def _apply_address_overrides(model: str, entities: list[dict], user_input: dict)
         byte_offset, bit_offset = parse_address(user_input[key], block_type)
         is_push = user_input.get(f"{key}_push", False)
         platform = "button" if is_push else get_platform(e["block"])
-        updated.append({**e, "byte_offset": byte_offset, "bit_offset": bit_offset, "platform": platform})
+        name = user_input.get(f"{key}_name") or f"LOGO {key}"
+        unique_id = user_input.get(f"{key}_unique_id") or None
+        updated.append({
+            **e,
+            "byte_offset": byte_offset,
+            "bit_offset": bit_offset,
+            "platform": platform,
+            "name": name,
+            "unique_id": unique_id,
+        })
     return updated
 
 
@@ -226,20 +238,43 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
-    """Handle options flow to edit entities and their addresses."""
+    """Handle options flow to edit connection settings, entities and their addresses."""
 
     def __init__(self) -> None:
+        self._connection_data: dict = {}
         self._entities: list[dict] = []
 
     async def async_step_init(self, user_input=None):
-        """Step 1: Edit entity list."""
+        """Step 1: Connection settings."""
+        errors = {}
+
+        if user_input is not None:
+            if not await _test_connection(
+                self.hass,
+                user_input[CONF_HOST],
+                user_input.get(CONF_RACK, DEFAULT_RACK),
+                user_input.get(CONF_SLOT, DEFAULT_SLOT),
+            ):
+                errors["base"] = "cannot_connect"
+            else:
+                self._connection_data = user_input
+                return await self.async_step_entities()
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_connection_schema(self.config_entry.data),
+            errors=errors,
+        )
+
+    async def async_step_entities(self, user_input=None):
+        """Step 2: Edit entity list."""
         errors = {}
         current_entities = self.config_entry.data.get(CONF_ENTITIES, [])
         current_str = ",".join(f"{e['block']}{e['number']}" for e in current_entities)
 
         if user_input is not None:
             entities, error = _parse_entities(
-                self.config_entry.data[CONF_MODEL],
+                self._connection_data[CONF_MODEL],
                 user_input[CONF_ENTITIES],
                 current_entities,
             )
@@ -250,18 +285,19 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_addresses()
 
         return self.async_show_form(
-            step_id="init",
+            step_id="entities",
             data_schema=vol.Schema({vol.Required(CONF_ENTITIES, default=current_str): str}),
             errors=errors,
+            description_placeholders={"example": "NI1,NI2,NQ1,AI1,Q1,M1"},
         )
 
     async def async_step_addresses(self, user_input=None):
-        """Step 2: Confirm or override VM address per entity."""
+        """Step 3: Confirm or override VM address per entity."""
         errors = {}
         if user_input is not None:
             try:
                 entities = _apply_address_overrides(
-                    self.config_entry.data[CONF_MODEL], self._entities, user_input
+                    self._connection_data[CONF_MODEL], self._entities, user_input
                 )
             except (ValueError, KeyError) as err:
                 errors["base"] = "invalid_address"
@@ -269,7 +305,7 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
             else:
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={**self.config_entry.data, CONF_ENTITIES: entities},
+                    data={**self.config_entry.data, **self._connection_data, CONF_ENTITIES: entities},
                 )
                 return self.async_create_entry(title="", data={})
 

@@ -27,7 +27,7 @@ class LogoDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=scan_interval),
+            update_interval=timedelta(milliseconds=scan_interval),
         )
         self.connection = connection
         self._read_ranges = get_vm_read_ranges(entities)

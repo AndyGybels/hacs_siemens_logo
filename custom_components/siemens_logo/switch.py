@@ -35,6 +35,7 @@ async def async_setup_entry(
             number=entity_cfg["number"],
             byte_offset=entity_cfg["byte_offset"],
             bit_offset=entity_cfg["bit_offset"],
+            unique_id=entity_cfg.get("unique_id"),
         )
         for entity_cfg in entry.data.get(CONF_ENTITIES, [])
         if entity_cfg["platform"] == "switch"
@@ -56,13 +57,14 @@ class LogoSwitch(CoordinatorEntity, SwitchEntity):
         number: int,
         byte_offset: int,
         bit_offset: int,
+        unique_id: str | None,
     ) -> None:
         super().__init__(coordinator)
         self._connection = connection
         self._byte_offset = byte_offset
         self._bit_offset = bit_offset
         self._attr_name = name
-        self._attr_unique_id = f"{entry_id}_{block}{number}"
+        self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
 
     @property
     def is_on(self) -> bool | None:
@@ -77,10 +79,7 @@ class LogoSwitch(CoordinatorEntity, SwitchEntity):
             self._attr_name, self._byte_offset, self._bit_offset,
         )
         await self.hass.async_add_executor_job(
-            self._connection.write_vm_bool,
-            self._byte_offset,
-            self._bit_offset,
-            True,
+            self._connection.write_vm_bool, self._byte_offset, self._bit_offset, True,
         )
         await self.coordinator.async_request_refresh()
 
@@ -90,9 +89,6 @@ class LogoSwitch(CoordinatorEntity, SwitchEntity):
             self._attr_name, self._byte_offset, self._bit_offset,
         )
         await self.hass.async_add_executor_job(
-            self._connection.write_vm_bool,
-            self._byte_offset,
-            self._bit_offset,
-            False,
+            self._connection.write_vm_bool, self._byte_offset, self._bit_offset, False,
         )
         await self.coordinator.async_request_refresh()

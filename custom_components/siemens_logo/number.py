@@ -30,6 +30,7 @@ async def async_setup_entry(
             block=entity_cfg["block"],
             number=entity_cfg["number"],
             byte_offset=entity_cfg["byte_offset"],
+            unique_id=entity_cfg.get("unique_id"),
         )
         for entity_cfg in entry.data.get(CONF_ENTITIES, [])
         if entity_cfg["platform"] == "number"
@@ -54,12 +55,13 @@ class LogoNumber(CoordinatorEntity, NumberEntity):
         block: str,
         number: int,
         byte_offset: int,
+        unique_id: str | None,
     ) -> None:
         super().__init__(coordinator)
         self._connection = connection
         self._byte_offset = byte_offset
         self._attr_name = name
-        self._attr_unique_id = f"{entry_id}_{block}{number}"
+        self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
 
     @property
     def native_value(self) -> int | None:
@@ -70,8 +72,6 @@ class LogoNumber(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.hass.async_add_executor_job(
-            self._connection.write_vm_int,
-            self._byte_offset,
-            int(value),
+            self._connection.write_vm_int, self._byte_offset, int(value),
         )
         await self.coordinator.async_request_refresh()

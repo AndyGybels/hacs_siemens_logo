@@ -11,7 +11,8 @@ CONF_SCAN_INTERVAL = "scan_interval"
 
 DEFAULT_RACK = 0
 DEFAULT_SLOT = 1
-DEFAULT_SCAN_INTERVAL = 1  # seconds
+DEFAULT_SCAN_INTERVAL = 1000  # milliseconds
+MIN_SCAN_INTERVAL = 100  # milliseconds
 
 # VM address maps per LOGO! model
 # Each block: start byte in VM, max count, type (digital=bit, analog=word)

@@ -29,6 +29,7 @@ async def async_setup_entry(
             number=entity_cfg["number"],
             byte_offset=entity_cfg["byte_offset"],
             bit_offset=entity_cfg["bit_offset"],
+            unique_id=entity_cfg.get("unique_id"),
         )
         for entity_cfg in entry.data.get(CONF_ENTITIES, [])
         if entity_cfg["platform"] == "binary_sensor"
@@ -49,12 +50,13 @@ class LogoBinarySensor(CoordinatorEntity, BinarySensorEntity):
         number: int,
         byte_offset: int,
         bit_offset: int,
+        unique_id: str | None,
     ) -> None:
         super().__init__(coordinator)
         self._byte_offset = byte_offset
         self._bit_offset = bit_offset
         self._attr_name = name
-        self._attr_unique_id = f"{entry_id}_{block}{number}"
+        self._attr_unique_id = unique_id or f"{entry_id}_{block}{number}"
 
     @property
     def is_on(self) -> bool | None:
