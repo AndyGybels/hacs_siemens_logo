@@ -20,7 +20,17 @@
       },
       "addresses": {
         "title": "VM Addresses",
-        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032)."
+        "description": "Confirm or override the VM address for each entity. Format: byte.bit for digital (e.g. 0.0), byte for analog (e.g. 1032). Enable 'Push button' to make an NI a momentary pulse instead of a toggle switch."
+      },
+      "reconfigure": {
+        "title": "Reconfigure LOGO! connection",
+        "data": {
+          "host": "IP Address",
+          "rack": "Rack",
+          "slot": "Slot",
+          "model": "LOGO! Model",
+          "scan_interval": "Scan Interval (seconds)"
+        }
       }
     },
     "error": {

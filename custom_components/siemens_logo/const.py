@@ -46,7 +46,9 @@ PLATFORM_MAP = {
     "NAQ": "sensor",
 }
 
-PLATFORMS = ["switch", "binary_sensor", "sensor", "number"]
+PLATFORMS = ["switch", "binary_sensor", "sensor", "number", "button"]
+
+BUTTON_PULSE_MS = 500  # milliseconds the bit is held high for push buttons
 
 
 def resolve_address(model: str, block_name: str, block_number: int):

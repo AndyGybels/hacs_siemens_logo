@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_SLOT,
     DOMAIN,
     VM_MAPS,
+    WRITABLE_DIGITAL,
     format_address,
     get_platform,
     parse_address,
@@ -30,40 +31,85 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_RACK, default=DEFAULT_RACK): int,
-        vol.Optional(CONF_SLOT, default=DEFAULT_SLOT): int,
-        vol.Required(CONF_MODEL, default="0BA8"): vol.In(list(VM_MAPS.keys())),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-    }
-)
 
-
-def _build_addresses_schema(entities: list[dict]) -> vol.Schema:
-    """Build a schema with one address field per entity, pre-filled with current/default address."""
+def _connection_schema(defaults: dict) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(
-                f"{e['block']}{e['number']}",
-                default=format_address(e["byte_offset"], e.get("bit_offset")),
-            ): str
-            for e in entities
+            vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
+            vol.Optional(CONF_RACK, default=defaults.get(CONF_RACK, DEFAULT_RACK)): int,
+            vol.Optional(CONF_SLOT, default=defaults.get(CONF_SLOT, DEFAULT_SLOT)): int,
+            vol.Required(CONF_MODEL, default=defaults.get(CONF_MODEL, "0BA8")): vol.In(list(VM_MAPS.keys())),
+            vol.Optional(CONF_SCAN_INTERVAL, default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
         }
     )
 
 
+def _build_addresses_schema(entities: list[dict]) -> vol.Schema:
+    """One address field per entity, pre-filled. NI entities also get a push button checkbox."""
+    fields = {}
+    for e in entities:
+        key = f"{e['block']}{e['number']}"
+        fields[vol.Required(key, default=format_address(e["byte_offset"], e.get("bit_offset")))] = str
+        if e["block"] in WRITABLE_DIGITAL:
+            fields[vol.Optional(f"{key}_push", default=e.get("platform") == "button")] = bool
+    return vol.Schema(fields)
+
+
 def _apply_address_overrides(model: str, entities: list[dict], user_input: dict) -> list[dict]:
-    """Apply user-supplied address strings to entity configs. Returns updated list."""
+    """Apply user-supplied address strings and push button flags to entity configs."""
     vm_map = VM_MAPS.get(model, {})
     updated = []
     for e in entities:
         key = f"{e['block']}{e['number']}"
         block_type = vm_map.get(e["block"], {}).get("type", "digital")
         byte_offset, bit_offset = parse_address(user_input[key], block_type)
-        updated.append({**e, "byte_offset": byte_offset, "bit_offset": bit_offset})
+        is_push = user_input.get(f"{key}_push", False)
+        platform = "button" if is_push else get_platform(e["block"])
+        updated.append({**e, "byte_offset": byte_offset, "bit_offset": bit_offset, "platform": platform})
     return updated
+
+
+async def _test_connection(hass, host: str, rack: int, slot: int) -> bool:
+    """Return True if connection succeeds."""
+    try:
+        client = snap7.client.Client()
+        await hass.async_add_executor_job(client.connect, host, rack, slot)
+        await hass.async_add_executor_job(client.disconnect)
+        return True
+    except Exception:
+        return False
+
+
+def _parse_entities(model: str, raw: str, current_entities: list[dict]) -> tuple[list[dict], str | None]:
+    """Parse entity string. Returns (entities, error_key) where error_key is None on success."""
+    entities = []
+    for part in [p.strip() for p in raw.split(",") if p.strip()]:
+        try:
+            block_name, block_number = parse_entity_string(part)
+            existing = next(
+                (e for e in current_entities
+                 if e["block"] == block_name and e["number"] == block_number),
+                None,
+            )
+            if existing:
+                byte_offset = existing["byte_offset"]
+                bit_offset = existing.get("bit_offset")
+                platform = existing.get("platform", get_platform(block_name))
+            else:
+                byte_offset, bit_offset = resolve_address(model, block_name, block_number)
+                platform = get_platform(block_name)
+            entities.append({
+                "block": block_name,
+                "number": block_number,
+                "platform": platform,
+                "name": f"LOGO {block_name}{block_number}",
+                "byte_offset": byte_offset,
+                "bit_offset": bit_offset,
+            })
+        except ValueError as err:
+            _LOGGER.error("Invalid entity '%s': %s", part, err)
+            return [], "invalid_entity"
+    return entities, None
 
 
 class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -75,54 +121,41 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connection_data: dict = {}
         self._entities: list[dict] = []
 
+    # ------------------------------------------------------------------
+    # Initial setup
+    # ------------------------------------------------------------------
+
     async def async_step_user(self, user_input=None):
         """Step 1: Connection settings."""
         errors = {}
-
         if user_input is not None:
-            try:
-                client = snap7.client.Client()
-                await self.hass.async_add_executor_job(
-                    client.connect, user_input[CONF_HOST],
-                    user_input.get(CONF_RACK, DEFAULT_RACK),
-                    user_input.get(CONF_SLOT, DEFAULT_SLOT),
-                )
-                await self.hass.async_add_executor_job(client.disconnect)
-            except Exception:
+            if not await _test_connection(
+                self.hass,
+                user_input[CONF_HOST],
+                user_input.get(CONF_RACK, DEFAULT_RACK),
+                user_input.get(CONF_SLOT, DEFAULT_SLOT),
+            ):
                 errors["base"] = "cannot_connect"
             else:
                 self._connection_data = user_input
                 return await self.async_step_entities()
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=_connection_schema(user_input or {}),
+            errors=errors,
         )
 
     async def async_step_entities(self, user_input=None):
         """Step 2: Enter entity names."""
         errors = {}
-        model = self._connection_data[CONF_MODEL]
-
         if user_input is not None:
-            entities = []
-            for part in [p.strip() for p in user_input[CONF_ENTITIES].split(",") if p.strip()]:
-                try:
-                    block_name, block_number = parse_entity_string(part)
-                    byte_offset, bit_offset = resolve_address(model, block_name, block_number)
-                    entities.append({
-                        "block": block_name,
-                        "number": block_number,
-                        "platform": get_platform(block_name),
-                        "name": f"LOGO {block_name}{block_number}",
-                        "byte_offset": byte_offset,
-                        "bit_offset": bit_offset,
-                    })
-                except ValueError as err:
-                    errors["base"] = "invalid_entity"
-                    _LOGGER.error("Invalid entity '%s': %s", part, err)
-                    break
-
-            if not errors:
+            entities, error = _parse_entities(
+                self._connection_data[CONF_MODEL], user_input[CONF_ENTITIES], []
+            )
+            if error:
+                errors["base"] = error
+            else:
                 self._entities = entities
                 return await self.async_step_addresses()
 
@@ -134,13 +167,13 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_addresses(self, user_input=None):
-        """Step 3: Confirm or override the VM address for each entity."""
+        """Step 3: Confirm or override VM address per entity."""
         errors = {}
-        model = self._connection_data[CONF_MODEL]
-
         if user_input is not None:
             try:
-                entities = _apply_address_overrides(model, self._entities, user_input)
+                entities = _apply_address_overrides(
+                    self._connection_data[CONF_MODEL], self._entities, user_input
+                )
             except (ValueError, KeyError) as err:
                 errors["base"] = "invalid_address"
                 _LOGGER.error("Invalid address: %s", err)
@@ -156,56 +189,63 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    # ------------------------------------------------------------------
+    # Reconfigure (change connection settings on existing entry)
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(self, user_input=None):
+        """Allow reconfiguring connection settings."""
+        errors = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            if not await _test_connection(
+                self.hass,
+                user_input[CONF_HOST],
+                user_input.get(CONF_RACK, DEFAULT_RACK),
+                user_input.get(CONF_SLOT, DEFAULT_SLOT),
+            ):
+                errors["base"] = "cannot_connect"
+            else:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={**entry.data, **user_input},
+                )
+                return self.async_update_reload_and_abort(entry)
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_connection_schema(entry.data),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return SiemensLogoOptionsFlow(config_entry)
+        return SiemensLogoOptionsFlow()
 
 
 class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow to edit entities and their addresses."""
 
-    def __init__(self, config_entry) -> None:
-        self._config_entry = config_entry
+    def __init__(self) -> None:
         self._entities: list[dict] = []
 
     async def async_step_init(self, user_input=None):
         """Step 1: Edit entity list."""
         errors = {}
-        model = self._config_entry.data[CONF_MODEL]
-        current_entities = self._config_entry.data.get(CONF_ENTITIES, [])
+        current_entities = self.config_entry.data.get(CONF_ENTITIES, [])
         current_str = ",".join(f"{e['block']}{e['number']}" for e in current_entities)
 
         if user_input is not None:
-            entities = []
-            for part in [p.strip() for p in user_input[CONF_ENTITIES].split(",") if p.strip()]:
-                try:
-                    block_name, block_number = parse_entity_string(part)
-                    # Reuse existing address if entity was already configured
-                    existing = next(
-                        (e for e in current_entities
-                         if e["block"] == block_name and e["number"] == block_number),
-                        None,
-                    )
-                    if existing:
-                        byte_offset = existing["byte_offset"]
-                        bit_offset = existing.get("bit_offset")
-                    else:
-                        byte_offset, bit_offset = resolve_address(model, block_name, block_number)
-                    entities.append({
-                        "block": block_name,
-                        "number": block_number,
-                        "platform": get_platform(block_name),
-                        "name": f"LOGO {block_name}{block_number}",
-                        "byte_offset": byte_offset,
-                        "bit_offset": bit_offset,
-                    })
-                except ValueError as err:
-                    errors["base"] = "invalid_entity"
-                    _LOGGER.error("Invalid entity '%s': %s", part, err)
-                    break
-
-            if not errors:
+            entities, error = _parse_entities(
+                self.config_entry.data[CONF_MODEL],
+                user_input[CONF_ENTITIES],
+                current_entities,
+            )
+            if error:
+                errors["base"] = error
+            else:
                 self._entities = entities
                 return await self.async_step_addresses()
 
@@ -218,18 +258,18 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
     async def async_step_addresses(self, user_input=None):
         """Step 2: Confirm or override VM address per entity."""
         errors = {}
-        model = self._config_entry.data[CONF_MODEL]
-
         if user_input is not None:
             try:
-                entities = _apply_address_overrides(model, self._entities, user_input)
+                entities = _apply_address_overrides(
+                    self.config_entry.data[CONF_MODEL], self._entities, user_input
+                )
             except (ValueError, KeyError) as err:
                 errors["base"] = "invalid_address"
                 _LOGGER.error("Invalid address: %s", err)
             else:
                 self.hass.config_entries.async_update_entry(
-                    self._config_entry,
-                    data={**self._config_entry.data, CONF_ENTITIES: entities},
+                    self.config_entry,
+                    data={**self.config_entry.data, CONF_ENTITIES: entities},
                 )
                 return self.async_create_entry(title="", data={})
 
