@@ -16,10 +16,12 @@ if _CUSTOM_COMPONENTS not in sys.path:
     sys.path.insert(0, _CUSTOM_COMPONENTS)
 
 # ---------------------------------------------------------------------------
-# Stub out `snap7` before any integration module is imported so that tests
-# can run without the native library installed.
+# Snap7: use the real library if installed, otherwise fall back to a
+# pure-Python stub so unit tests can run without the native library.
 # ---------------------------------------------------------------------------
-if "snap7" not in sys.modules:
+try:
+    import snap7  # noqa: F401 — real library available, nothing to stub
+except ImportError:
     _snap7 = types.ModuleType("snap7")
     _snap7_client = types.ModuleType("snap7.client")
     _snap7_util = types.ModuleType("snap7.util")

@@ -185,9 +185,8 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_import(self, import_data: dict):
-        """Create a config entry from a configuration.yaml entry."""
+        """Create or update a config entry from a configuration.yaml entry."""
         await self.async_set_unique_id(import_data[CONF_HOST])
-        self._abort_if_unique_id_configured()
 
         model = import_data[CONF_MODEL]
         vm_map = VM_MAPS.get(model, {})
@@ -220,16 +219,20 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
 
+        new_data = {
+            CONF_HOST: import_data[CONF_HOST],
+            CONF_RACK: import_data.get(CONF_RACK, DEFAULT_RACK),
+            CONF_SLOT: import_data.get(CONF_SLOT, DEFAULT_SLOT),
+            CONF_MODEL: model,
+            CONF_SCAN_INTERVAL: import_data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            CONF_ENTITIES: entities,
+        }
+
+        self._abort_if_unique_id_configured(updates={"data": new_data})
+
         return self.async_create_entry(
             title=f"LOGO! {import_data[CONF_HOST]}",
-            data={
-                CONF_HOST: import_data[CONF_HOST],
-                CONF_RACK: import_data.get(CONF_RACK, DEFAULT_RACK),
-                CONF_SLOT: import_data.get(CONF_SLOT, DEFAULT_SLOT),
-                CONF_MODEL: model,
-                CONF_SCAN_INTERVAL: import_data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                CONF_ENTITIES: entities,
-            },
+            data=new_data,
         )
 
     # ------------------------------------------------------------------

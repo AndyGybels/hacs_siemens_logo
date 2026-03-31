@@ -95,16 +95,17 @@ type LogoConfigEntry = ConfigEntry[LogoRuntimeData]
 class LogoConnection:
     """Thread-safe wrapper around the snap7 client for LOGO! PLC."""
 
-    def __init__(self, host: str, rack: int, slot: int) -> None:
+    def __init__(self, host: str, rack: int, slot: int, port: int = 102) -> None:
         self._host = host
         self._rack = rack
         self._slot = slot
+        self._port = port
         self._client = snap7.client.Client()
         self._lock = threading.Lock()
 
     def connect(self) -> None:
         with self._lock:
-            self._client.connect(self._host, self._rack, self._slot)
+            self._client.connect(self._host, self._rack, self._slot, self._port)
             _LOGGER.info("Connected to LOGO! at %s", self._host)
 
     def disconnect(self) -> None:
@@ -120,7 +121,7 @@ class LogoConnection:
         """Reconnect if the connection was lost."""
         if not self._client.get_connected():
             _LOGGER.warning("LOGO! connection lost, reconnecting...")
-            self._client.connect(self._host, self._rack, self._slot)
+            self._client.connect(self._host, self._rack, self._slot, self._port)
 
     def read_vm(self, start: int, size: int) -> bytearray:
         """Read bytes from VM area (DB1)."""

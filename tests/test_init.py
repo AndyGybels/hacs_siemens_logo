@@ -170,7 +170,7 @@ class TestLogoConnection:
         conn = LogoConnection("192.168.1.1", 0, 1)
         conn._client = mock_snap7_client
         conn.read_vm(0, 1)
-        mock_snap7_client.connect.assert_called_once_with("192.168.1.1", 0, 1)
+        mock_snap7_client.connect.assert_called_once_with("192.168.1.1", 0, 1, 102)
 
 
 class TestAsyncSetupEntry:

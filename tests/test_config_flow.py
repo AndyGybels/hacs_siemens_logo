@@ -639,6 +639,14 @@ class TestImportFlow:
             await flow.async_step_import(_import_data())
         flow.async_create_entry.assert_not_called()
 
+    async def test_passes_updates_when_entry_exists(self, flow: SiemensLogoConfigFlow) -> None:
+        """Existing entry receives updated data so YAML changes are picked up on restart."""
+        await flow.async_step_import(_import_data())
+        _, kwargs = flow._abort_if_unique_id_configured.call_args
+        assert "updates" in kwargs
+        assert CONF_ENTITIES in kwargs["updates"]["data"]
+        assert kwargs["updates"]["data"][CONF_HOST] == "192.168.1.50"
+
     async def test_analog_entity_has_no_bit_offset(self, flow: SiemensLogoConfigFlow) -> None:
         data = _import_data(entities=[{"block": "AI1", "name": "Level"}])
         await flow.async_step_import(data)
