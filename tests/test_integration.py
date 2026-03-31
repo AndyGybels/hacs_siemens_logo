@@ -9,6 +9,7 @@ import time
 from ctypes import c_char
 
 import pytest
+import pytest_socket
 
 try:
     from snap7.server import Server
@@ -36,6 +37,10 @@ _TEST_PORT = 1102
 @pytest.fixture(scope="module")
 def s7_server():
     """Start a snap7 S7 server with DB1. Shared for the whole module."""
+    # pytest-homeassistant-custom-component disables sockets in pytest_runtest_setup,
+    # which runs before fixture setup. Re-enable here so the server socket can be created.
+    pytest_socket.enable_socket()
+
     db_data = bytearray(_DB_SIZE)
     db_array = (c_char * _DB_SIZE).from_buffer(db_data)
 
@@ -196,7 +201,7 @@ class TestRoundTrip:
 # ---------------------------------------------------------------------------
 
 class TestReconnect:
-    def test_reconnects_after_disconnect(self, s7_server) -> None:
+    def test_reconnects_after_disconnect(self, s7_server, socket_enabled) -> None:
         connection = LogoConnection("127.0.0.1", 0, 1, port=_TEST_PORT)
         connection.connect()
         connection._client.disconnect()

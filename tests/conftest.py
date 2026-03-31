@@ -9,11 +9,26 @@ from unittest.mock import MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Make `siemens_logo` importable (custom_components is one level up)
+# Path setup
+# - Project root on sys.path so `import custom_components` finds our package
+#   (required for the HA loader to discover the integration via
+#   pytest-homeassistant-custom-component's enable_custom_integrations fixture)
+# - custom_components/ also on sys.path so `import siemens_logo` keeps working
+#   in existing unit tests that import the module directly.
 # ---------------------------------------------------------------------------
+_PROJECT_ROOT = str(Path(__file__).parents[1])
 _CUSTOM_COMPONENTS = str(Path(__file__).parents[1] / "custom_components")
-if _CUSTOM_COMPONENTS not in sys.path:
-    sys.path.insert(0, _CUSTOM_COMPONENTS)
+for _p in (_PROJECT_ROOT, _CUSTOM_COMPONENTS):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# Import custom_components now (as a namespace package) so it is cached in
+# sys.modules with our directory in __path__ before pytest-homeassistant-
+# custom-component's hass fixture mounts its own testing_config directory.
+# This ensures the HA loader's _get_custom_components() finds siemens_logo.
+import custom_components as _cc  # noqa: E402, F401
+if _CUSTOM_COMPONENTS not in list(_cc.__path__):
+    _cc.__path__ = list(_cc.__path__) + [_CUSTOM_COMPONENTS]
 
 # ---------------------------------------------------------------------------
 # Snap7: use the real library if installed, otherwise fall back to a

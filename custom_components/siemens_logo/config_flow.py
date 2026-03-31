@@ -228,7 +228,7 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_ENTITIES: entities,
         }
 
-        self._abort_if_unique_id_configured(updates={"data": new_data})
+        self._abort_if_unique_id_configured(updates=new_data)
 
         return self.async_create_entry(
             title=f"LOGO! {import_data[CONF_HOST]}",
