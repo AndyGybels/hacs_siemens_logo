@@ -1,4 +1,5 @@
 pytest
 pytest-asyncio
-homeassistant
+pytest-homeassistant-custom-component
+pytest-socket
 python-snap7
