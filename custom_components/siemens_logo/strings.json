@@ -46,7 +46,8 @@
     },
     "abort": {
       "already_configured": "This LOGO! device is already configured",
-      "invalid_entity": "Invalid entity in configuration.yaml — check the logs for details"
+      "invalid_entity": "Invalid entity in configuration.yaml — check the logs for details",
+      "yaml_configured": "This integration is managed via configuration.yaml — remove the YAML entry before using the UI"
     }
   },
   "options": {

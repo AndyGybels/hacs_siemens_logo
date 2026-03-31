@@ -241,6 +241,12 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Step 1: Connection settings."""
+        if any(
+            e.source == config_entries.SOURCE_IMPORT
+            for e in self._async_current_entries()
+        ):
+            return self.async_abort(reason="yaml_configured")
+
         errors = {}
         if user_input is not None:
             await self.async_set_unique_id(user_input[CONF_HOST])
@@ -313,8 +319,11 @@ class SiemensLogoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(self, user_input=None):
         """Allow reconfiguring connection settings."""
-        errors = {}
         entry = self._get_reconfigure_entry()
+        if entry.source == config_entries.SOURCE_IMPORT:
+            return self.async_abort(reason="yaml_configured")
+
+        errors = {}
 
         if user_input is not None:
             if not await _test_connection(
@@ -352,6 +361,9 @@ class SiemensLogoOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Step 1: Connection settings."""
+        if self.config_entry.source == config_entries.SOURCE_IMPORT:
+            return self.async_abort(reason="yaml_configured")
+
         errors = {}
 
         if user_input is not None:

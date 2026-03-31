@@ -470,6 +470,24 @@ class TestUserFlow:
         entry = hass.config_entries.async_get_entry(result["result"].entry_id)
         assert entry.unique_id == "10.0.0.99"
 
+    async def test_aborts_when_yaml_entry_exists(
+        self,
+        hass: HomeAssistant,
+        mock_setup_entry: None,
+    ) -> None:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=MOCK_ENTRY_DATA.copy(),
+            source=config_entries.SOURCE_IMPORT,
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "yaml_configured"
+
 
 # ---------------------------------------------------------------------------
 # YAML import flow
@@ -824,6 +842,25 @@ class TestOptionsFlow:
         assert updated.data[CONF_SCAN_INTERVAL] == 500
         assert updated.data[CONF_ENTITIES][0]["name"] == "Motor"
 
+    async def test_aborts_when_entry_is_yaml_configured(
+        self,
+        hass: HomeAssistant,
+        mock_setup_entry: None,
+    ) -> None:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=MOCK_ENTRY_DATA.copy(),
+            unique_id="192.168.1.100",
+            source=config_entries.SOURCE_IMPORT,
+        )
+        entry.add_to_hass(hass)
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "yaml_configured"
+
 
 # ---------------------------------------------------------------------------
 # Reconfigure flow
@@ -914,3 +951,25 @@ class TestReconfigureFlow:
         updated = hass.config_entries.async_get_entry(loaded_entry.entry_id)
         assert updated.data[CONF_HOST] == "10.0.0.2"
         assert updated.data[CONF_SCAN_INTERVAL] == 500
+
+    async def test_aborts_when_entry_is_yaml_configured(
+        self,
+        hass: HomeAssistant,
+        mock_setup_entry: None,
+    ) -> None:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=MOCK_ENTRY_DATA.copy(),
+            unique_id="192.168.1.100",
+            source=config_entries.SOURCE_IMPORT,
+        )
+        entry.add_to_hass(hass)
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "yaml_configured"
